@@ -1,5 +1,7 @@
 # UDMCLASS patch and reproducibility package
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22209421.svg)](https://doi.org/10.5281/zenodo.22209421)
+
 UDMCLASS is the project name for the modifications to CLASS used to study the
 mixed cold-dark-matter and self-interacting ultralight-dark-matter (UDM)
 benchmarks in the accompanying paper. This v1.0.0 package provides the
@@ -146,6 +148,14 @@ No CLASS source tree, raw CLASS output, private validation archive, manuscript
 draft, build product, or development chronology is included.
 
 ## Citation, provenance, and license scope
+
+The archived release used for the paper and reproduction is
+[v1.0.0](https://github.com/skylee2/UDMCLASS-patch/releases/tag/v1.0.0), with
+exact-version Zenodo DOI
+[10.5281/zenodo.22209422](https://doi.org/10.5281/zenodo.22209422). Cite this
+DOI when referring to that exact archived version. The Concept DOI
+[10.5281/zenodo.22209421](https://doi.org/10.5281/zenodo.22209421) represents
+the software record across all versions.
 
 When using this package, cite the accompanying manuscript:
 
