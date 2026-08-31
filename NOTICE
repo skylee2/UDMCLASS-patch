@@ -1,0 +1,32 @@
+UDMCLASS patch and reproducibility package
+Copyright (c) 2026 Seokcheon Lee
+
+LICENSE SCOPE
+
+The MIT License in this repository applies to original Python and shell
+scripts and original documentation authored for this reproducibility package.
+Files may also identify that scope with SPDX-License-Identifier: MIT.
+
+UPSTREAM CLASS
+
+CLASS is a separate upstream project obtained from lesgourg/class_public. This
+package does not redistribute the CLASS source tree, does not grant rights to
+CLASS, and does not imply that CLASS is MIT-licensed. Users must obtain CLASS
+separately and respect upstream terms, authorship, and citation guidance.
+
+UNIFIED PATCH
+
+patches/udmclass.patch is a unified diff against official CLASS v3.3.4 commit
+e85808324f51fc694d12e3ed7439552a3c3f9540. It contains context and removed
+lines originating from upstream CLASS as well as project-authored added lines.
+The patch as a whole is therefore not presented as MIT-licensed and does not
+relicense upstream material. No MIT header has been inserted into the
+certified patch.
+
+SCIENTIFIC DATA AND FIGURES
+
+The frozen input files, compact reference CSV files, and final figures are
+distributed as reproducibility materials. The MIT grant above should not be
+read as a broader grant concerning upstream CLASS or third-party material.
+
+See UPSTREAM.md and PATCH_MANIFEST.md for exact provenance.

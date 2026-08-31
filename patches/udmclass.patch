@@ -1,0 +1,2998 @@
+diff --git a/include/background.h b/include/background.h
+index fe4d42d8e909e8daf3b856549e00e0e2fc0e128d..0f2c3e44e5493fc147036b881bece33eeec0a23b 100644
+--- a/include/background.h
++++ b/include/background.h
+@@ -12,7 +12,10 @@
+ 
+ /** list of possible parametrisations of the DE equation of state */
+ 
+-enum equation_of_state {CLP,EDE};
++enum equation_of_state {CLP,EDE,UDM};
++
++/* UDM matching and effective-fluid prescriptions. */
++enum udm_averaged_matching_mode {udm_avg_match_no, udm_avg_match_active};
+ 
+ 
+ /** list of possible parametrizations of the varying fundamental constants */
+@@ -103,6 +106,33 @@ struct background
+   double Omega0_lambda;    /**< \f$ \Omega_{0_\Lambda} \f$: cosmological constant */
+   double Omega0_fld;       /**< \f$ \Omega_{0 de} \f$: fluid */
+   double Omega0_scf;       /**< \f$ \Omega_{0 scf} \f$: scalar field */
++  /* UDM dedicated UDM background species */
++  double Omega0_udm;        /**< \f$ \Omega_{0 udm} \f$: dedicated UDM background species */
++  short use_udm;            /**< whether to activate the dedicated UDM species */
++  double udm_m_tilde_eV;    /**< \f$ \tilde m = m/\lambda^{1/4} \f$ in eV */
++  double udm_log10_m_eV;    /**< log10 of scalar mass in eV */
++  double udm_m_eV;          /**< scalar mass in eV, derived from log10_m_eV */
++  double udm_m;             /**< scalar mass in CLASS units, 1/Mpc */
++  double udm_lambda;        /**< physical dimensionless lambda=(m_eV/m_tilde_eV)^4 */
++  double udm_lambda_kg_class; /**< canonical KG quartic coefficient 3*lambda*Mpl_red_CLASS^2 */
++  double udm_z_osc;         /**< input/guess redshift for KG-to-averaged background switch */
++  double udm_z_m;           /**< quartic-to-quadratic transition redshift */
++  double udm_z_m_override;  /**< optional positive manual override for udm_z_m */
++  double udm_phi_ini;       /**< initial UDM scalar amplitude after shooting */
++  double udm_phi_ini_analytic; /**< analytic initial-amplitude estimate used to start abundance shooting */
++  double udm_phi_ini_fixed; /**< fixed production amplitude; >0 bypasses abundance shooting */
++  double udm_phi_prime_ini; /**< initial UDM scalar derivative wrt conformal time */
++  double udm_shooting_tolerance; /**< relative tolerance for true present-day abundance shooting */
++  int udm_shooting_max_iter; /**< maximum background integrations in one abundance solve */
++  double udm_Omega0_realized; /**< realized rho_udm/rho_crit at a=1 for retained background table */
++  double udm_shooting_relative_error; /**< signed relative abundance residual for retained table */
++  int udm_shooting_iterations; /**< number of background integrations in the retained H0 trial's abundance solve */
++  short udm_include_in_metric; /**< reserved UDM flag for UDM metric-source bookkeeping */
++  short udm_include_in_total_matter; /**< reserved UDM flag for UDM total-matter bookkeeping */
++  short udm_include_in_lensing; /**< reserved UDM flag for UDM lensing-source bookkeeping */
++  enum udm_averaged_matching_mode udm_averaged_matching; /**< averaged KG-to-fluid matching mode */
++  double udm_averaged_matching_window_lna; /**< finite-window width in ln(a) */
++  int udm_averaged_matching_samples; /**< finite-window sample count */
+   short use_ppf; /**< flag switching on PPF perturbation equations instead of true fluid equations for perturbations. It could have been defined inside
+                     perturbation structure, but we leave it here in such way to have all fld parameters grouped. */
+   double c_gamma_over_c_fld; /**< ppf parameter defined in eq. (16) of 0808.3125 [astro-ph] */
+@@ -112,6 +142,13 @@ struct background
+   double cs2_fld;  /**< \f$ c^2_{s~DE} \f$: sound speed of the fluid in the frame comoving with the fluid (so, this is
+                       not [delta p/delta rho] in the synchronous or newtonian gauge!) */
+   double Omega_EDE;        /**< \f$ wa_{DE} \f$: Early Dark Energy density parameter */
++  /* phenomenological UDM effective-fluid parameters for arXiv:2502.11568 */
++  double m_tilde_eV;       /**< \f$ \tilde m = m/\lambda^{1/4} \f$ in eV */
++  double z_osc;            /**< redshift at which the UDM field starts oscillating */
++  double z_m;              /**< redshift of the quartic-to-quadratic transition */
++  double z_m_override;     /**< optional positive user override for z_m */
++  double udm_transition_width; /**< tanh smoothing width in ln(a) for UDM phase transitions */
++  double udm_activation_width; /**< numerical post-handoff RHS activation width in ln(a), independent of udm_transition_width */
+   double * scf_parameters; /**< list of parameters describing the scalar field potential */
+   short attractor_ic_scf;  /**< whether the scalar field has attractor initial conditions */
+   int scf_tuning_index;    /**< index in scf_parameters used for tuning */
+@@ -168,6 +205,11 @@ struct background
+   int index_bg_rho_lambda;    /**< cosmological constant density */
+   int index_bg_rho_fld;       /**< fluid density */
+   int index_bg_w_fld;         /**< fluid equation of state */
++  int index_bg_rho_udm;       /**< UDM density */
++  int index_bg_p_udm;         /**< UDM pressure */
++  int index_bg_w_udm;         /**< UDM equation of state */
++  int index_bg_phi_udm;       /**< UDM scalar value */
++  int index_bg_phi_prime_udm; /**< UDM scalar conformal-time derivative */
+   int index_bg_rho_idr;       /**< density of interacting dark radiation */
+   int index_bg_rho_ur;        /**< relativistic neutrinos/relics density */
+   int index_bg_rho_dcdm;      /**< dcdm density */
+@@ -255,6 +297,9 @@ struct background
+   int index_bi_rho_dcdm;/**< {B} dcdm density */
+   int index_bi_rho_dr;  /**< {B} dr density */
+   int index_bi_rho_fld; /**< {B} fluid density */
++  int index_bi_rho_udm;       /**< {B} UDM averaged density */
++  int index_bi_phi_udm;       /**< {B} UDM scalar value */
++  int index_bi_phi_prime_udm; /**< {B} UDM scalar derivative wrt conformal time */
+   int index_bi_phi_scf;       /**< {B} scalar field value */
+   int index_bi_phi_prime_scf; /**< {B} scalar field derivative wrt conformal time */
+ 
+@@ -287,6 +332,7 @@ struct background
+   short has_ncdm;      /**< presence of non-cold dark matter? */
+   short has_lambda;    /**< presence of cosmological constant? */
+   short has_fld;       /**< presence of fluid with constant w and cs2? */
++  short has_udm;       /**< presence of dedicated UDM background species? */
+   short has_ur;        /**< presence of ultra-relativistic neutrinos/relics? */
+   short has_idr;       /**< presence of interacting dark radiation? */
+   short has_curvature; /**< presence of global spatial curvature? */
+@@ -393,6 +439,22 @@ extern "C" {
+                         double * pvecback
+                         );
+ 
++  int background_at_z_udm_kg_left(
++                                  struct background *pba,
++                                  double z,
++                                  enum vecback_format return_format,
++                                  int * last_index,
++                                  double * pvecback
++                                  );
++
++  int background_at_z_udm_efa_right(
++                                    struct background *pba,
++                                    double z,
++                                    enum vecback_format return_format,
++                                    int * last_index,
++                                    double * pvecback
++                                    );
++
+   int background_tau_of_z(
+                           struct background *pba,
+                           double z,
+diff --git a/include/perturbations.h b/include/perturbations.h
+index 74b3a2aad1263c6c516491fcaf768351ad55cd88..4774d8a67c735876c297e6d88298718f341936fe 100644
+--- a/include/perturbations.h
++++ b/include/perturbations.h
+@@ -82,8 +82,6 @@ enum selection_type {gaussian,tophat,dirac};
+ 
+ //@}
+ 
+-
+-
+ /**
+  * Structure containing everything about perturbations that other
+  * modules need to know, in particular tabled values of the source
+@@ -248,6 +246,7 @@ struct perturbations
+   short has_source_delta_dcdm; /**< do we need source for delta of DCDM? */
+   short has_source_delta_fld;  /**< do we need source for delta of dark energy? */
+   short has_source_delta_scf;  /**< do we need source for delta from scalar field? */
++  short has_source_delta_udm;  /**< do we need a source for the UDM density contrast? */
+   short has_source_delta_dr;   /**< do we need source for delta of decay radiation? */
+   short has_source_delta_ur;   /**< do we need source for delta of ultra-relativistic neutrinos/relics? */
+   short has_source_delta_ncdm; /**< do we need source for delta of all non-cold dark matter species (e.g. massive neutrinos)? */
+@@ -262,6 +261,7 @@ struct perturbations
+   short has_source_theta_dcdm; /**< do we need source for theta of DCDM? */
+   short has_source_theta_fld;  /**< do we need source for theta of dark energy? */
+   short has_source_theta_scf;  /**< do we need source for theta of scalar field? */
++  short has_source_theta_udm;  /**< do we need a source for the UDM velocity divergence? */
+   short has_source_theta_dr;   /**< do we need source for theta of ultra-relativistic neutrinos/relics? */
+   short has_source_theta_ur;   /**< do we need source for theta of ultra-relativistic neutrinos/relics? */
+   short has_source_theta_ncdm; /**< do we need source for theta of all non-cold dark matter species (e.g. massive neutrinos)? */
+@@ -295,6 +295,7 @@ struct perturbations
+   int index_tp_delta_dcdm;/**< index value for delta of DCDM */
+   int index_tp_delta_fld;  /**< index value for delta of dark energy */
+   int index_tp_delta_scf;  /**< index value for delta of scalar field */
++  int index_tp_delta_udm;  /**< index value for the UDM density contrast */
+   int index_tp_delta_dr; /**< index value for delta of decay radiation */
+   int index_tp_delta_ur; /**< index value for delta of ultra-relativistic neutrinos/relics */
+   int index_tp_delta_idr; /**< index value for delta of interacting dark radiation */
+@@ -311,6 +312,7 @@ struct perturbations
+   int index_tp_theta_dcdm;  /**< index value for theta of DCDM */
+   int index_tp_theta_fld;   /**< index value for theta of dark energy */
+   int index_tp_theta_scf;   /**< index value for theta of scalar field */
++  int index_tp_theta_udm;   /**< index value for the UDM velocity divergence */
+   int index_tp_theta_ur;    /**< index value for theta of ultra-relativistic neutrinos/relics */
+   int index_tp_theta_idr;   /**< index value for theta of interacting dark radiation */
+   int index_tp_theta_idm;   /**< index value for theta of interacting dark matter */
+@@ -482,6 +484,10 @@ struct perturbations_vector
+   int index_pt_Gamma_fld;  /**< unique dark energy dynamical variable in PPF case */
+   int index_pt_phi_scf;  /**< scalar field density */
+   int index_pt_phi_prime_scf;  /**< scalar field velocity */
++  int index_pt_delta_udm;  /**< placeholder UDM fluid density perturbation */
++  int index_pt_theta_udm;  /**< placeholder UDM fluid velocity divergence */
++  int index_pt_delta_phi_udm;  /**< placeholder UDM field perturbation */
++  int index_pt_delta_phi_prime_udm;  /**< placeholder UDM field perturbation derivative */
+   int index_pt_delta_ur; /**< density of ultra-relativistic neutrinos/relics */
+   int index_pt_theta_ur; /**< velocity of ultra-relativistic neutrinos/relics */
+   int index_pt_shear_ur; /**< shear of ultra-relativistic neutrinos/relics */
+@@ -609,6 +615,29 @@ struct perturbations_workspace
+   double S_fld;                /**< S quantity sourcing Gamma_prime evolution in PPF scheme (equivalent to eq. 15 in 0808.3125) */
+   double Gamma_prime_fld;      /**< Gamma_prime in PPF scheme (equivalent to eq. 14 in 0808.3125) */
+ 
++  short udm_matching_done;       /**< has KG-to-fluid matching been applied for this k-mode? */
++  short udm_matching_candidate;  /**< has a finite pre-oscillation KG candidate been stored? */
++  short udm_strict_reinit_done;  /**< has accepted-state strict reinitialization been applied? */
++  double udm_delta_match;        /**< KG-derived delta_udm immediately before matching */
++  double udm_theta_match;        /**< KG-derived theta_udm immediately before matching */
++  double udm_delta_post_initial; /**< post-fluid delta_udm immediately after applying matching */
++  double udm_theta_post_initial; /**< post-fluid theta_udm immediately after applying matching */
++  double udm_theta_kg_finite;    /**< UDM finite/pass flag for KG-derived theta candidate */
++  double udm_avg_sample_count_used; /**< UDM RHS samples accumulated inside averaged matching window */
++  double udm_avg_delta_rho; /**< averaged KG density perturbation */
++  double udm_avg_momentum; /**< averaged KG momentum */
++  double udm_avg_delta_p; /**< averaged KG pressure perturbation */
++  double udm_avg_fluid_delta_p; /**< averaged post-fluid closure pressure */
++  double udm_avg_pressure_jump; /**< pressure discontinuity measure */
++  double udm_avg_density_mismatch; /**< density mismatch measure */
++  double udm_avg_momentum_jump; /**< momentum discontinuity measure */
++  double udm_avg_delta_p_sq_avg; /**< UDM internal running average of KG delta_p squared */
++  double udm_avg_delta_p_rms; /**< UDM running RMS of KG delta_p inside averaged matching window */
++  double udm_avg_delta_p_min; /**< UDM running minimum KG delta_p inside averaged matching window */
++  double udm_avg_delta_p_max; /**< UDM running maximum KG delta_p inside averaged matching window */
++  double udm_avg_finite_flag; /**< finite averaged-state flag */
++  double udm_avg_active_fallback_reason; /**< UDM numeric active averaged matching fallback reason */
++
+   FILE * perturbations_output_file; /**< filepointer to output file*/
+   int index_ikout;            /**< index for output k value (when k_output_values is set) */
+ 
+diff --git a/source/background.c b/source/background.c
+index 87d60c619bb97c641f0f5cc9be0e37810f01beab..c90d15b5c539106487d20f1f1126852f04ae7fb8 100644
+--- a/source/background.c
++++ b/source/background.c
+@@ -114,6 +114,181 @@
+ 
+ #include "background.h"
+ 
++/* UDM dedicated UDM background helpers. The physical dimensionless
++   coupling is udm_lambda.  The canonical code-level KG coefficient is
++   udm_lambda_kg_class=3*udm_lambda*Mpl_red_CLASS^2, so V has units Mpc^-2. */
++static double background_udm_V(
++                               struct background * pba,
++                               double phi
++                               ) {
++  return 0.5*pba->udm_m*pba->udm_m*phi*phi
++    + 0.25*pba->udm_lambda_kg_class*pow(phi,4);
++}
++
++static double background_udm_dV(
++                                struct background * pba,
++                                double phi
++                                ) {
++  return pba->udm_m*pba->udm_m*phi
++    + pba->udm_lambda_kg_class*pow(phi,3);
++}
++
++static double background_udm_w_averaged(
++                                        struct background * pba,
++                                        double a
++                                        ) {
++  double a_m, x, x_m, width, s_m;
++
++  a_m = 1./(1.+pba->udm_z_m);
++  width = pba->udm_transition_width;
++
++  if (a <= 0.)
++    return -1.;
++
++  x = log(a);
++  x_m = log(a_m);
++  s_m = 0.5*(1.+tanh((x-x_m)/width));
++
++  return 1./3.*(1.-s_m);
++}
++
++static double background_udm_integral_from_aosc(
++                                                struct background * pba
++                                                ) {
++  double a_osc, a_m, x_osc, x_m, width, integral_s_m;
++
++  a_osc = 1./(1.+pba->udm_z_osc);
++  a_m = 1./(1.+pba->udm_z_m);
++  width = pba->udm_transition_width;
++  x_osc = log(a_osc);
++  x_m = log(a_m);
++
++  /* integral from a_osc to 1 of 3(1+w)dln(a), with
++     w = (1/3)(1-s_m). */
++  integral_s_m = 0.5*((0.-x_osc)+width*(log(cosh((0.-x_m)/width))-log(cosh((x_osc-x_m)/width))));
++
++  return 4.*log(1./a_osc) - integral_s_m;
++}
++
++static double background_udm_shoot_phi_from_rho(
++                                                struct background * pba,
++                                                double rho
++                                                ) {
++  double b, disc, y;
++
++  b = 0.5*pba->udm_m*pba->udm_m;
++
++  if (pba->udm_lambda_kg_class <= 0.) {
++    y = rho/b;
++  }
++  else {
++    disc = sqrt(b*b + pba->udm_lambda_kg_class*rho);
++    y = 2.*rho/(b+disc);
++  }
++
++  return sqrt(MAX(y,0.));
++}
++
++static int background_initial_conditions_with_udm_phi(
++                                                       struct precision *ppr,
++                                                       struct background *pba,
++                                                       double *pvecback,
++                                                       double *pvecback_integration,
++                                                       short use_phi_override,
++                                                       double phi_override,
++                                                       double *loga_ini
++                                                       );
++
++static int background_udm_integrate_abundance_trial(
++                                                     struct precision *ppr,
++                                                     struct background *pba,
++                                                     struct background_parameters_and_workspace *pbpaw,
++                                                     double *pvecback_integration,
++                                                     int *used_in_output,
++                                                     int (*generic_evolver)(EVOLVER_PROTOTYPE),
++                                                     double loga_final,
++                                                     double phi_ini,
++                                                     double *Omega_udm_realized,
++                                                     double *loga_ini
++                                                     );
++
++/* Integrate one complete background trial from freshly constructed initial
++   conditions. An integration failure is returned as an error; it is never
++   interpreted as either sign of the abundance residual. */
++static int background_udm_integrate_abundance_trial(
++                                                     struct precision *ppr,
++                                                     struct background *pba,
++                                                     struct background_parameters_and_workspace *pbpaw,
++                                                     double *pvecback_integration,
++                                                     int *used_in_output,
++                                                     int (*generic_evolver)(EVOLVER_PROTOTYPE),
++                                                     double loga_final,
++                                                     double phi_ini,
++                                                     double *Omega_udm_realized,
++                                                     double *loga_ini
++                                                     ) {
++
++  int index_loga;
++  double rho_udm_final, rho_crit_final;
++
++  class_test(!isfinite(phi_ini) || (phi_ini <= 0.),
++             pba->error_message,
++             "UDM abundance trial requires finite phi_ini > 0, got %.17e.",
++             phi_ini);
++
++  /* This call recomputes a_ini, the radiation-dominance check, H_ini, and all
++     H-dependent initial integrated quantities for this amplitude. */
++  class_call(background_initial_conditions_with_udm_phi(ppr,
++                                                         pba,
++                                                         pbpaw->pvecback,
++                                                         pvecback_integration,
++                                                         _TRUE_,
++                                                         phi_ini,
++                                                         loga_ini),
++             pba->error_message,
++             pba->error_message);
++
++  for (index_loga=0; index_loga<pba->bt_size; index_loga++) {
++    pba->loga_table[index_loga] = *loga_ini
++      + index_loga*(loga_final-*loga_ini)/(pba->bt_size-1);
++    used_in_output[index_loga] = 1;
++  }
++
++  class_call(generic_evolver(background_derivs,
++                             *loga_ini,
++                             loga_final,
++                             pvecback_integration,
++                             used_in_output,
++                             pba->bi_size,
++                             pbpaw,
++                             ppr->tol_background_integration,
++                             ppr->smallest_allowed_variation,
++                             background_timescale,
++                             ppr->background_integration_stepsize,
++                             pba->loga_table,
++                             pba->bt_size,
++                             background_sources,
++                             NULL,
++                             pba->error_message),
++             pba->error_message,
++             pba->error_message);
++
++  rho_udm_final = pba->background_table[(pba->bt_size-1)*pba->bg_size
++                                        +pba->index_bg_rho_udm];
++  rho_crit_final = pba->background_table[(pba->bt_size-1)*pba->bg_size
++                                         +pba->index_bg_rho_crit];
++  class_test(!isfinite(rho_udm_final) || !isfinite(rho_crit_final) ||
++             (rho_udm_final < 0.) || (rho_crit_final <= 0.),
++             pba->error_message,
++             "UDM abundance trial ended with invalid rho_udm=%.17e or rho_crit=%.17e.",
++             rho_udm_final,
++             rho_crit_final);
++
++  *Omega_udm_realized = rho_udm_final/rho_crit_final;
++
++  return _SUCCESS_;
++}
++
+ /**
+  * Background quantities at given redshift z.
+  *
+@@ -254,6 +429,115 @@ int background_at_tau(
+   return _SUCCESS_;
+ }
+ 
++/**
++ * Branch-aware background evaluation on the exact-KG side
++ * of the UDM background handoff.  Within the final four retained KG rows,
++ * use a local cubic Lagrange polynomial in log(a) made exclusively from
++ * pre-switch samples.  This avoids importing the averaged-fluid right limit
++ * through the ordinary global spline.  Away from that boundary, retain the
++ * standard background interpolation path unchanged.
++ */
++int background_at_z_udm_kg_left(
++                                struct background *pba,
++                                double z,
++                                enum vecback_format return_format,
++                                int * last_index,
++                                double * pvecback
++                                ) {
++  int pvecback_size, index_right, index_left, index_node, index_other, index_bg;
++  double loga, loga_switch, weight;
++
++  loga = -log(1.+z);
++  loga_switch = log(1./(1.+pba->udm_z_osc));
++
++  if ((pba->has_udm == _FALSE_) || (loga > loga_switch))
++    return background_at_z(pba,z,return_format,inter_normal,last_index,pvecback);
++
++  index_right = 0;
++  while ((index_right < pba->bt_size) &&
++         (pba->loga_table[index_right] < loga_switch))
++    index_right++;
++  index_left = index_right-1;
++
++  if ((index_left < 3) || (loga < pba->loga_table[index_left-3]))
++    return background_at_z(pba,z,return_format,inter_normal,last_index,pvecback);
++
++  if (return_format == normal_info)
++    pvecback_size = pba->bg_size_normal;
++  else if (return_format == short_info)
++    pvecback_size = pba->bg_size_short;
++  else
++    pvecback_size = pba->bg_size;
++
++  for (index_bg=0; index_bg<pvecback_size; index_bg++)
++    pvecback[index_bg] = 0.;
++
++  for (index_node=index_left-3; index_node<=index_left; index_node++) {
++    weight = 1.;
++    for (index_other=index_left-3; index_other<=index_left; index_other++) {
++      if (index_other != index_node)
++        weight *= (loga-pba->loga_table[index_other])
++          /(pba->loga_table[index_node]-pba->loga_table[index_other]);
++    }
++    for (index_bg=0; index_bg<pvecback_size; index_bg++)
++      pvecback[index_bg] += weight*pba->background_table[index_node*pba->bg_size+index_bg];
++  }
++
++  /* a is known exactly from the interpolation argument and should not inherit
++     a polynomial roundoff error. */
++  pvecback[pba->index_bg_a] = exp(loga);
++  *last_index = index_left;
++
++  return _SUCCESS_;
++}
++
++/* UDM counterpart of background_at_z_udm_kg_left():
++   evaluate the averaged-fluid right limit using only post-switch rows. */
++int background_at_z_udm_efa_right(
++                                  struct background *pba,
++                                  double z,
++                                  enum vecback_format return_format,
++                                  int * last_index,
++                                  double * pvecback
++                                  ) {
++  int pvecback_size, index_right, index_node, index_other, index_bg;
++  double loga, loga_switch, weight;
++
++  loga = -log(1.+z);
++  loga_switch = log(1./(1.+pba->udm_z_osc));
++  index_right = 0;
++  while ((index_right < pba->bt_size) &&
++         (pba->loga_table[index_right] < loga_switch))
++    index_right++;
++
++  if ((pba->has_udm == _FALSE_) || (index_right+3 >= pba->bt_size) ||
++      (loga > pba->loga_table[index_right+3]))
++    return background_at_z(pba,z,return_format,inter_normal,last_index,pvecback);
++
++  if (return_format == normal_info)
++    pvecback_size = pba->bg_size_normal;
++  else if (return_format == short_info)
++    pvecback_size = pba->bg_size_short;
++  else
++    pvecback_size = pba->bg_size;
++
++  for (index_bg=0; index_bg<pvecback_size; index_bg++)
++    pvecback[index_bg] = 0.;
++  for (index_node=index_right; index_node<=index_right+3; index_node++) {
++    weight = 1.;
++    for (index_other=index_right; index_other<=index_right+3; index_other++) {
++      if (index_other != index_node)
++        weight *= (loga-pba->loga_table[index_other])
++          /(pba->loga_table[index_node]-pba->loga_table[index_other]);
++    }
++    for (index_bg=0; index_bg<pvecback_size; index_bg++)
++      pvecback[index_bg] += weight*pba->background_table[index_node*pba->bg_size+index_bg];
++  }
++  pvecback[pba->index_bg_a] = exp(loga);
++  *last_index = index_right;
++  return _SUCCESS_;
++}
++
+ /**
+  * Conformal time at given redshift.
+  *
+@@ -396,8 +680,10 @@ int background_functions(
+   int n_ncdm;
+   /* fluid's time-dependent equation of state parameter */
+   double w_fld, dw_over_da, integral_fld;
++  double w_udm_diag;
+   /* scalar field quantities */
+   double phi, phi_prime;
++  double phi_udm, phi_prime_udm, rho_udm, p_udm, w_udm;
+   /* Since we only know a_prime_over_a after we have rho_tot,
+      it is not possible to simply sum up p_tot_prime directly.
+      Instead we sum up dp_dloga = p_prime/a_prime_over_a. The formula is
+@@ -553,6 +839,48 @@ int background_functions(
+     rho_tot += pvecback[pba->index_bg_rho_fld];
+     p_tot += w_fld * pvecback[pba->index_bg_rho_fld];
+     dp_dloga += (a*dw_over_da-3*(1+w_fld)*w_fld)*pvecback[pba->index_bg_rho_fld];
++
++    /* For the effective-fluid UDM model, let equality calculations follow the
++       radiation-like and matter-like averaged phases of the fluid. */
++    if ((pba->fluid_equation_of_state == UDM) && (a >= 1./(1.+pba->z_osc))) {
++      w_udm_diag = MIN(MAX(w_fld,0.),1./3.);
++      rho_r += 3.*w_udm_diag*pvecback[pba->index_bg_rho_fld];
++      rho_m += (1.-3.*w_udm_diag)*pvecback[pba->index_bg_rho_fld];
++    }
++  }
++
++  /* UDM dedicated UDM background species. Before z_osc use exact KG
++     background variables; after z_osc use a phenomenological averaged-fluid
++     background to avoid stiff oscillations. Perturbations are not implemented. */
++  if (pba->has_udm == _TRUE_) {
++
++    phi_udm = pvecback_B[pba->index_bi_phi_udm];
++    phi_prime_udm = pvecback_B[pba->index_bi_phi_prime_udm];
++    pvecback[pba->index_bg_phi_udm] = phi_udm;
++    pvecback[pba->index_bg_phi_prime_udm] = phi_prime_udm;
++
++    if (a < 1./(1.+pba->udm_z_osc)) {
++      rho_udm = phi_prime_udm*phi_prime_udm/(2.*a*a) + background_udm_V(pba,phi_udm);
++      p_udm = phi_prime_udm*phi_prime_udm/(2.*a*a) - background_udm_V(pba,phi_udm);
++      w_udm = p_udm/rho_udm;
++    }
++    else {
++      rho_udm = pvecback_B[pba->index_bi_rho_udm];
++      w_udm = background_udm_w_averaged(pba,a);
++      p_udm = w_udm*rho_udm;
++    }
++
++    pvecback[pba->index_bg_rho_udm] = rho_udm;
++    pvecback[pba->index_bg_p_udm] = p_udm;
++    pvecback[pba->index_bg_w_udm] = w_udm;
++
++    rho_tot += rho_udm;
++    p_tot += p_udm;
++
++    if (a >= 1./(1.+pba->udm_z_osc)) {
++      rho_r += 3.*w_udm*rho_udm;
++      rho_m += (1.-3.*w_udm)*rho_udm;
++    }
+   }
+ 
+   /* relativistic neutrinos (and all relativistic relics) */
+@@ -673,6 +1001,9 @@ int background_w_fld(
+   double dOmega_ede_over_da = 0.;
+   double d2Omega_ede_over_da2 = 0.;
+   double a_eq, Omega_r, Omega_m;
++  double a_osc, a_m;
++  double x, x_osc, x_m, width, s_osc, s_m, y_osc, y_m;
++  double integral_s_osc, integral_s_m;
+ 
+   /** - first, define the function w(a) */
+   switch (pba->fluid_equation_of_state) {
+@@ -702,6 +1033,24 @@ int background_w_fld(
+     // w_ede(a) taken from eq. (11) in 1706.00730
+     *w_fld = - dOmega_ede_over_da*a/Omega_ede/3./(1.-Omega_ede)+a_eq/3./(a+a_eq);
+     break;
++  case UDM:
++    /* arXiv:2502.11568 UDM effective-fluid toy model. */
++    a_osc = 1./(1.+pba->z_osc);
++    a_m = 1./(1.+pba->z_m);
++    width = pba->udm_transition_width;
++
++    if (a <= 0.) {
++      *w_fld = -1.;
++    }
++    else {
++      x = log(a);
++      x_osc = log(a_osc);
++      x_m = log(a_m);
++      s_osc = 0.5*(1.+tanh((x-x_osc)/width));
++      s_m = 0.5*(1.+tanh((x-x_m)/width));
++      *w_fld = -1. + 4./3.*s_osc - 1./3.*s_m;
++    }
++    break;
+   }
+ 
+ 
+@@ -721,6 +1070,25 @@ int background_w_fld(
+       + dOmega_ede_over_da*dOmega_ede_over_da*a/3./(1.-Omega_ede)/(1.-Omega_ede)/Omega_ede
+       + a_eq/3./(a+a_eq)/(a+a_eq);
+     break;
++  case UDM:
++    /* smooth tanh transitions in ln(a), leaving perturbation equations untouched. */
++    if (a <= 0.) {
++      *dw_over_da_fld = 0.;
++    }
++    else {
++      a_osc = 1./(1.+pba->z_osc);
++      a_m = 1./(1.+pba->z_m);
++      width = pba->udm_transition_width;
++      x = log(a);
++      x_osc = log(a_osc);
++      x_m = log(a_m);
++      y_osc = (x-x_osc)/width;
++      y_m = (x-x_m)/width;
++      *dw_over_da_fld =
++        2./3./width/a/pow(cosh(y_osc),2)
++        -1./6./width/a/pow(cosh(y_m),2);
++    }
++    break;
+   }
+ 
+   /** - finally, give the analytic solution of the following integral:
+@@ -740,6 +1108,24 @@ int background_w_fld(
+   case EDE:
+     class_stop(pba->error_message,"EDE implementation not finished: to finish it, read the comments in background.c just before this line\n");
+     break;
++  case UDM:
++    /* analytic integral of smoothed 3(1+w)dln(a) from a to today. */
++    a_osc = 1./(1.+pba->z_osc);
++    a_m = 1./(1.+pba->z_m);
++    width = pba->udm_transition_width;
++
++    if (a <= 0.) {
++      *integral_fld = 4.*log(a_m/a_osc) + 3.*log(1./a_m);
++    }
++    else {
++      x = log(a);
++      x_osc = log(a_osc);
++      x_m = log(a_m);
++      integral_s_osc = 0.5*((0.-x)+width*(log(cosh((0.-x_osc)/width))-log(cosh((x-x_osc)/width))));
++      integral_s_m = 0.5*((0.-x)+width*(log(cosh((0.-x_m)/width))-log(cosh((x-x_m)/width))));
++      *integral_fld = 4.*integral_s_osc - integral_s_m;
++    }
++    break;
+   }
+ 
+   /** note: of course you can generalise these formulas to anything,
+@@ -983,6 +1369,7 @@ int background_indices(
+   pba->has_scf = _FALSE_;
+   pba->has_lambda = _FALSE_;
+   pba->has_fld = _FALSE_;
++  pba->has_udm = _FALSE_;
+   pba->has_ur = _FALSE_;
+   pba->has_idr = _FALSE_;
+   pba->has_curvature = _FALSE_;
+@@ -1012,6 +1399,9 @@ int background_indices(
+   if (pba->Omega0_fld != 0.)
+     pba->has_fld = _TRUE_;
+ 
++  if ((pba->use_udm == _TRUE_) && (pba->Omega0_udm != 0.))
++    pba->has_udm = _TRUE_;
++
+   if (pba->Omega0_ur != 0.)
+     pba->has_ur = _TRUE_;
+ 
+@@ -1080,6 +1470,13 @@ int background_indices(
+   class_define_index(pba->index_bg_rho_fld,pba->has_fld,index_bg,1);
+   class_define_index(pba->index_bg_w_fld,pba->has_fld,index_bg,1);
+ 
++  /* indices for dedicated UDM background species */
++  class_define_index(pba->index_bg_rho_udm,pba->has_udm,index_bg,1);
++  class_define_index(pba->index_bg_p_udm,pba->has_udm,index_bg,1);
++  class_define_index(pba->index_bg_w_udm,pba->has_udm,index_bg,1);
++  class_define_index(pba->index_bg_phi_udm,pba->has_udm,index_bg,1);
++  class_define_index(pba->index_bg_phi_prime_udm,pba->has_udm,index_bg,1);
++
+   /* - index for ultra-relativistic neutrinos/species */
+   class_define_index(pba->index_bg_rho_ur,pba->has_ur,index_bg,1);
+ 
+@@ -1165,6 +1562,11 @@ int background_indices(
+   /* -> energy density in fluid */
+   class_define_index(pba->index_bi_rho_fld,pba->has_fld,index_bi,1);
+ 
++  /* dedicated UDM background variables */
++  class_define_index(pba->index_bi_rho_udm,pba->has_udm,index_bi,1);
++  class_define_index(pba->index_bi_phi_udm,pba->has_udm,index_bi,1);
++  class_define_index(pba->index_bi_phi_prime_udm,pba->has_udm,index_bi,1);
++
+   /* -> scalar field and its derivative wrt conformal time (Zuma) */
+   class_define_index(pba->index_bi_phi_scf,pba->has_scf,index_bi,1);
+   class_define_index(pba->index_bi_phi_prime_scf,pba->has_scf,index_bi,1);
+@@ -1895,6 +2297,11 @@ int background_solve(
+ 
+   /* initial and final loga values */
+   double loga_ini, loga_final;
++  /* local-only UDM abundance shooting state (never reused across H0 trials) */
++  double udm_target=0., udm_Omega_realized=0., udm_residual=0., udm_relative_error=0.;
++  double udm_phi_analytic=0., x_guess=0., x_lower=0., x_upper=0., x_trial=0.;
++  double residual_lower=0., residual_upper=0., best_relative_error=0.;
++  int abundance_integrations=0, abundance_bracketed=_FALSE_, abundance_converged=_FALSE_;
+   /* growth factor today */
+   double D_today;
+   /* indices for the different arrays */
+@@ -1913,7 +2320,9 @@ int background_solve(
+   /** - allocate vector of quantities to be integrated */
+   class_alloc(pvecback_integration,pba->bi_size*sizeof(double),pba->error_message);
+ 
+-  /** - impose initial conditions with background_initial_conditions() */
++  /** - impose analytic initial conditions once to construct this H0 trial's
++      fresh UDM amplitude estimate. UDM trial integrations below rebuild
++      all initial conditions from scratch. */
+   class_call(background_initial_conditions(ppr,pba,pvecback,pvecback_integration,&(loga_ini)),
+              pba->error_message,
+              pba->error_message);
+@@ -1959,25 +2368,252 @@ int background_solve(
+     break;
+   }
+ 
+-  /** - perform the integration */
+-  class_call(generic_evolver(background_derivs,
+-                             loga_ini,
+-                             loga_final,
+-                             pvecback_integration,
+-                             used_in_output,
+-                             pba->bi_size,
+-                             &bpaw,
+-                             ppr->tol_background_integration,
+-                             ppr->smallest_allowed_variation,
+-                             background_timescale, //'evaluate_timescale', required by evolver_rk but not by ndf15
+-                             ppr->background_integration_stepsize,
+-                             pba->loga_table,
+-                             pba->bt_size,
+-                             background_sources,
+-                             NULL, //'print_variables' in evolver_rk could be set, but, not required
+-                             pba->error_message),
+-             pba->error_message,
+-             pba->error_message);
++  /** - perform the integration. For UDM, solve the actual present-day
++      abundance in x=ln(phi_ini) with a deterministic factor-two bracket and
++      bisection. The fixed-theta_s H0 solve remains the outer solve because
++      this entire local state is reconstructed on every background_solve(). */
++  if (pba->has_udm == _TRUE_) {
++
++    udm_target = pba->Omega0_udm;
++    udm_phi_analytic = pba->udm_phi_ini_analytic;
++    class_test(!isfinite(udm_phi_analytic) || (udm_phi_analytic <= 0.),
++               pba->error_message,
++               "UDM analytic abundance guess is invalid: phi_ini=%.17e.",
++               udm_phi_analytic);
++
++    if (pba->udm_phi_ini_fixed > 0.) {
++      /* Fixed-parameter route: integrate exactly once at the supplied
++         amplitude. This is the production path used by the frozen inputs. */
++      x_trial = log(pba->udm_phi_ini_fixed);
++      pba->udm_shooting_iterations = 0;
++      pba->udm_Omega0_realized = 0.;
++      pba->udm_shooting_relative_error = 0.;
++
++      class_call(background_udm_integrate_abundance_trial(ppr,
++                                                          pba,
++                                                          &bpaw,
++                                                          pvecback_integration,
++                                                          used_in_output,
++                                                          generic_evolver,
++                                                          loga_final,
++                                                          pba->udm_phi_ini_fixed,
++                                                          &udm_Omega_realized,
++                                                          &loga_ini),
++                 pba->error_message,
++                 pba->error_message);
++      udm_relative_error = (udm_Omega_realized-udm_target)/udm_target;
++      pba->udm_phi_ini = pba->udm_phi_ini_fixed;
++      pba->udm_Omega0_realized = udm_Omega_realized;
++      pba->udm_shooting_relative_error = udm_relative_error;
++      pba->udm_shooting_iterations = 1;
++
++    }
++    else {
++    x_guess = log(udm_phi_analytic);
++    pba->udm_shooting_iterations = 0;
++    pba->udm_Omega0_realized = 0.;
++    pba->udm_shooting_relative_error = 0.;
++
++    x_trial = x_guess;
++    class_call(background_udm_integrate_abundance_trial(ppr,
++                                                        pba,
++                                                        &bpaw,
++                                                        pvecback_integration,
++                                                        used_in_output,
++                                                        generic_evolver,
++                                                        loga_final,
++                                                        exp(x_trial),
++                                                        &udm_Omega_realized,
++                                                        &loga_ini),
++               pba->error_message,
++               pba->error_message);
++    abundance_integrations++;
++    udm_residual = udm_Omega_realized-udm_target;
++    udm_relative_error = udm_residual/udm_target;
++    best_relative_error = fabs(udm_relative_error);
++
++    if (fabs(udm_relative_error) <= pba->udm_shooting_tolerance) {
++      abundance_converged = _TRUE_;
++    }
++    else if (udm_residual < 0.) {
++      x_lower = x_trial;
++      residual_lower = udm_residual;
++      while ((abundance_integrations < pba->udm_shooting_max_iter) &&
++             (abundance_bracketed == _FALSE_) &&
++             (abundance_converged == _FALSE_)) {
++        x_trial = x_lower+log(2.);
++        class_call(background_udm_integrate_abundance_trial(ppr,
++                                                            pba,
++                                                            &bpaw,
++                                                            pvecback_integration,
++                                                            used_in_output,
++                                                            generic_evolver,
++                                                            loga_final,
++                                                            exp(x_trial),
++                                                            &udm_Omega_realized,
++                                                            &loga_ini),
++                   pba->error_message,
++                   pba->error_message);
++        abundance_integrations++;
++        udm_residual = udm_Omega_realized-udm_target;
++        udm_relative_error = udm_residual/udm_target;
++        best_relative_error = MIN(best_relative_error,fabs(udm_relative_error));
++        if (fabs(udm_relative_error) <= pba->udm_shooting_tolerance) {
++          abundance_converged = _TRUE_;
++        }
++        else if (udm_residual > 0.) {
++          x_upper = x_trial;
++          residual_upper = udm_residual;
++          abundance_bracketed = _TRUE_;
++        }
++        else {
++          x_lower = x_trial;
++          residual_lower = udm_residual;
++        }
++      }
++    }
++    else {
++      x_upper = x_trial;
++      residual_upper = udm_residual;
++      while ((abundance_integrations < pba->udm_shooting_max_iter) &&
++             (abundance_bracketed == _FALSE_) &&
++             (abundance_converged == _FALSE_)) {
++        x_trial = x_upper-log(2.);
++        class_call(background_udm_integrate_abundance_trial(ppr,
++                                                            pba,
++                                                            &bpaw,
++                                                            pvecback_integration,
++                                                            used_in_output,
++                                                            generic_evolver,
++                                                            loga_final,
++                                                            exp(x_trial),
++                                                            &udm_Omega_realized,
++                                                            &loga_ini),
++                   pba->error_message,
++                   pba->error_message);
++        abundance_integrations++;
++        udm_residual = udm_Omega_realized-udm_target;
++        udm_relative_error = udm_residual/udm_target;
++        best_relative_error = MIN(best_relative_error,fabs(udm_relative_error));
++        if (fabs(udm_relative_error) <= pba->udm_shooting_tolerance) {
++          abundance_converged = _TRUE_;
++        }
++        else if (udm_residual < 0.) {
++          x_lower = x_trial;
++          residual_lower = udm_residual;
++          abundance_bracketed = _TRUE_;
++        }
++        else {
++          x_upper = x_trial;
++          residual_upper = udm_residual;
++        }
++      }
++    }
++
++    class_test((abundance_converged == _FALSE_) &&
++               (abundance_bracketed == _FALSE_),
++               pba->error_message,
++               "UDM abundance shooting could not construct a sign-changing bracket in %d integrations; target=%.17e, last realized=%.17e, last relative residual=%+.17e, best absolute relative residual=%.17e. Integration failures are not treated as residual signs.",
++               abundance_integrations,
++               udm_target,
++               udm_Omega_realized,
++               udm_relative_error,
++               best_relative_error);
++
++    while ((abundance_converged == _FALSE_) &&
++           (abundance_integrations < pba->udm_shooting_max_iter)) {
++      class_test(!((residual_lower < 0.) && (residual_upper > 0.)),
++                 pba->error_message,
++                 "UDM abundance bisection lost its sign-changing bracket: F_lower=%+.17e, F_upper=%+.17e.",
++                 residual_lower,
++                 residual_upper);
++      x_trial = 0.5*(x_lower+x_upper);
++      class_call(background_udm_integrate_abundance_trial(ppr,
++                                                          pba,
++                                                          &bpaw,
++                                                          pvecback_integration,
++                                                          used_in_output,
++                                                          generic_evolver,
++                                                          loga_final,
++                                                          exp(x_trial),
++                                                          &udm_Omega_realized,
++                                                          &loga_ini),
++                 pba->error_message,
++                 pba->error_message);
++      abundance_integrations++;
++      udm_residual = udm_Omega_realized-udm_target;
++      udm_relative_error = udm_residual/udm_target;
++      best_relative_error = MIN(best_relative_error,fabs(udm_relative_error));
++      if (fabs(udm_relative_error) <= pba->udm_shooting_tolerance) {
++        abundance_converged = _TRUE_;
++      }
++      else if (udm_residual < 0.) {
++        x_lower = x_trial;
++        residual_lower = udm_residual;
++      }
++      else {
++        x_upper = x_trial;
++        residual_upper = udm_residual;
++      }
++    }
++
++    class_test(abundance_converged == _FALSE_,
++               pba->error_message,
++               "UDM abundance shooting did not reach configured relative tolerance %.17e in %d integrations. Last relative residual=%+.17e; best absolute relative residual=%.17e; final log-amplitude bracket width=%.17e. The tolerance has not been relaxed.",
++               pba->udm_shooting_tolerance,
++               abundance_integrations,
++               udm_relative_error,
++               best_relative_error,
++               x_upper-x_lower);
++
++    pba->udm_phi_ini = exp(x_trial);
++    pba->udm_Omega0_realized = udm_Omega_realized;
++    pba->udm_shooting_relative_error = udm_relative_error;
++    pba->udm_shooting_iterations = abundance_integrations;
++
++    /* The last integration is the accepted one. Confirm directly from the
++       retained table rather than from the requested input abundance. */
++    {
++      double retained_Omega_udm;
++      retained_Omega_udm =
++        pba->background_table[(pba->bt_size-1)*pba->bg_size+pba->index_bg_rho_udm]
++        /pba->background_table[(pba->bt_size-1)*pba->bg_size+pba->index_bg_rho_crit];
++      class_test(fabs(retained_Omega_udm-pba->udm_Omega0_realized) >
++                 64.*DBL_EPSILON*MAX(1.,fabs(retained_Omega_udm)),
++                 pba->error_message,
++                 "Retained UDM background table is inconsistent with accepted shooting result: retained=%.17e accepted=%.17e.",
++                 retained_Omega_udm,
++                 pba->udm_Omega0_realized);
++      class_test(fabs((retained_Omega_udm-udm_target)/udm_target) >
++                 pba->udm_shooting_tolerance,
++                 pba->error_message,
++                 "Retained UDM background table violates configured abundance tolerance: relative residual=%+.17e tolerance=%.17e.",
++                 (retained_Omega_udm-udm_target)/udm_target,
++                 pba->udm_shooting_tolerance);
++    }
++
++    }
++  }
++  else {
++    class_call(generic_evolver(background_derivs,
++                               loga_ini,
++                               loga_final,
++                               pvecback_integration,
++                               used_in_output,
++                               pba->bi_size,
++                               &bpaw,
++                               ppr->tol_background_integration,
++                               ppr->smallest_allowed_variation,
++                               background_timescale,
++                               ppr->background_integration_stepsize,
++                               pba->loga_table,
++                               pba->bt_size,
++                               background_sources,
++                               NULL,
++                               pba->error_message),
++               pba->error_message,
++               pba->error_message);
++  }
+ 
+   /** - recover some quantities today */
+   /* -> age in Gyears */
+@@ -2102,6 +2738,8 @@ int background_solve(
+     pba->Omega0_nfsm += pba->Omega0_idm;
+   if (pba->has_dcdm == _TRUE_)
+     pba->Omega0_nfsm += pba->Omega0_dcdm;
++  if (pba->has_udm == _TRUE_)
++    pba->Omega0_nfsm += pba->Omega0_udm;
+   for (n_ncdm=0;n_ncdm<pba->N_ncdm; n_ncdm++) {
+     /* here we define non-free-streaming matter as: any non-relatistic species with a dimensionless ratio m/T bigger than a threshold ppr->M_nfsm_threshold; if this threshold is of the order of 10^4, this corresponds to the condition "becoming non-relativistic during radiation domination". Beware: this definition won't work in the case in which the user passes a customised p.s.d. for ncdm, such that M_ncdm is not defined.  */
+     if (pba->M_ncdm[n_ncdm] > ppr->M_nfsm_threshold) {
+@@ -2136,6 +2774,25 @@ int background_initial_conditions(
+                                   double * loga_ini
+                                   ) {
+ 
++  return background_initial_conditions_with_udm_phi(ppr,
++                                                     pba,
++                                                     pvecback,
++                                                     pvecback_integration,
++                                                     _FALSE_,
++                                                     0.,
++                                                     loga_ini);
++}
++
++static int background_initial_conditions_with_udm_phi(
++                                                       struct precision *ppr,
++                                                       struct background *pba,
++                                                       double *pvecback,
++                                                       double *pvecback_integration,
++                                                       short use_phi_override,
++                                                       double phi_override,
++                                                       double *loga_ini
++                                                       ) {
++
+   /** Summary: */
+ 
+   /** - define local variables */
+@@ -2149,6 +2806,7 @@ int background_initial_conditions(
+   double scf_lambda;
+   double rho_fld_today;
+   double w_fld,dw_over_da_fld,integral_fld;
++  double rho_udm_today, rho_udm_ini;
+ 
+   /** - fix initial value of \f$ a \f$ */
+   a = ppr->a_ini_over_a_today_default;
+@@ -2256,6 +2914,34 @@ int background_initial_conditions(
+ 
+   }
+ 
++  if (pba->has_udm == _TRUE_) {
++    /* UDM analytic shooting. With phi_prime_ini=0 and a frozen
++       pre-oscillation field, match the density at z_osc implied by today's
++       Omega_udm and the post-z_osc averaged-fluid scaling. This remains only
++       the initial guess for true present-day abundance shooting. */
++    rho_udm_today = pba->Omega0_udm * pow(pba->H0,2);
++    rho_udm_ini = rho_udm_today * exp(background_udm_integral_from_aosc(pba));
++
++    pba->udm_phi_ini_analytic = background_udm_shoot_phi_from_rho(pba,rho_udm_ini);
++    if (use_phi_override == _TRUE_) {
++      class_test(!isfinite(phi_override) || (phi_override <= 0.),
++                 pba->error_message,
++                 "UDM initial-condition override requires finite phi_ini > 0, got %.17e.",
++                 phi_override);
++      pba->udm_phi_ini = phi_override;
++      rho_udm_ini = background_udm_V(pba,pba->udm_phi_ini);
++    }
++    else {
++      pba->udm_phi_ini = pba->udm_phi_ini_analytic;
++    }
++    pba->udm_phi_prime_ini = 0.;
++
++    pvecback_integration[pba->index_bi_rho_udm] = rho_udm_ini;
++    pvecback_integration[pba->index_bi_phi_udm] = pba->udm_phi_ini;
++    pvecback_integration[pba->index_bi_phi_prime_udm] = pba->udm_phi_prime_ini;
++
++  }
++
+   /** - Fix initial value of \f$ \phi, \phi' \f$
+    * set directly in the radiation attractor => fixes the units in terms of rho_ur
+    *
+@@ -2452,6 +3138,11 @@ int background_output_titles(
+   class_store_columntitle(titles,"(.)rho_lambda",pba->has_lambda);
+   class_store_columntitle(titles,"(.)rho_fld",pba->has_fld);
+   class_store_columntitle(titles,"(.)w_fld",pba->has_fld);
++  class_store_columntitle(titles,"(.)rho_udm",pba->has_udm);
++  class_store_columntitle(titles,"(.)p_udm",pba->has_udm);
++  class_store_columntitle(titles,"(.)w_udm",pba->has_udm);
++  class_store_columntitle(titles,"phi_udm",pba->has_udm);
++  class_store_columntitle(titles,"phi'_udm",pba->has_udm);
+   class_store_columntitle(titles,"(.)rho_ur",pba->has_ur);
+   class_store_columntitle(titles,"(.)rho_idr",pba->has_idr);
+   class_store_columntitle(titles,"(.)rho_crit",_TRUE_);
+@@ -2528,6 +3219,11 @@ int background_output_data(
+     class_store_double(dataptr,pvecback[pba->index_bg_rho_lambda],pba->has_lambda,storeidx);
+     class_store_double(dataptr,pvecback[pba->index_bg_rho_fld],pba->has_fld,storeidx);
+     class_store_double(dataptr,pvecback[pba->index_bg_w_fld],pba->has_fld,storeidx);
++    class_store_double(dataptr,pvecback[pba->index_bg_rho_udm],pba->has_udm,storeidx);
++    class_store_double(dataptr,pvecback[pba->index_bg_p_udm],pba->has_udm,storeidx);
++    class_store_double(dataptr,pvecback[pba->index_bg_w_udm],pba->has_udm,storeidx);
++    class_store_double(dataptr,pvecback[pba->index_bg_phi_udm],pba->has_udm,storeidx);
++    class_store_double(dataptr,pvecback[pba->index_bg_phi_prime_udm],pba->has_udm,storeidx);
+     class_store_double(dataptr,pvecback[pba->index_bg_rho_ur],pba->has_ur,storeidx);
+     class_store_double(dataptr,pvecback[pba->index_bg_rho_idr],pba->has_idr,storeidx);
+     class_store_double(dataptr,pvecback[pba->index_bg_rho_crit],_TRUE_,storeidx);
+@@ -2660,6 +3356,23 @@ int background_derivs(
+     dy[pba->index_bi_rho_fld] = -3.*(1.+pvecback[pba->index_bg_w_fld])*y[pba->index_bi_rho_fld];
+   }
+ 
++  if (pba->has_udm == _TRUE_) {
++    /** UDM background evolution. Before z_osc evolve KG;
++        after z_osc evolve an averaged density and freeze KG variables. */
++    if (a < 1./(1.+pba->udm_z_osc)) {
++      dy[pba->index_bi_rho_udm] = -3.*(1.+pvecback[pba->index_bg_w_udm])*y[pba->index_bi_rho_udm];
++      dy[pba->index_bi_phi_udm] = y[pba->index_bi_phi_prime_udm]/a/H;
++      dy[pba->index_bi_phi_prime_udm] =
++        -2.*y[pba->index_bi_phi_prime_udm]
++        - a*background_udm_dV(pba,y[pba->index_bi_phi_udm])/H;
++    }
++    else {
++      dy[pba->index_bi_rho_udm] = -3.*(1.+pvecback[pba->index_bg_w_udm])*y[pba->index_bi_rho_udm];
++      dy[pba->index_bi_phi_udm] = 0.;
++      dy[pba->index_bi_phi_prime_udm] = 0.;
++    }
++  }
++
+   if (pba->has_scf == _TRUE_) {
+     /** - Scalar field equation: \f$ \phi'' + 2 a H \phi' + a^2 dV = 0 \f$  (note H is wrt cosmological time)
+         written as \f$ d\phi/dlna = phi' / (aH) \f$ and \f$ d\phi'/dlna = -2*phi' - (a/H) dV \f$ */
+diff --git a/source/input.c b/source/input.c
+index 99ca121ad1d5be93fd0b87316849e85a6fa732c3..8e53cb11c06090c2ae475da63e24f27ccd1f3565 100644
+--- a/source/input.c
++++ b/source/input.c
+@@ -1401,14 +1401,14 @@ int input_try_unknown_parameters(double * unknown_parameter,
+   /** Shoot forward into class up to required stage */
+   if (pfzw->required_computation_stage >= cs_background){
+     if (input_verbose>2)
+-      printf("Stage 1: background\n");
++      printf("UDM: background\n");
+     ba.background_verbose = 0;
+     class_call_except(background_init(&pr,&ba), ba.error_message, errmsg, background_free_input(&ba);thermodynamics_free_input(&th);perturbations_free_input(&pt););
+   }
+ 
+   if (pfzw->required_computation_stage >= cs_thermodynamics){
+     if (input_verbose>2)
+-      printf("Stage 2: thermodynamics\n");
++      printf("UDM: thermodynamics\n");
+     pr.thermo_Nz_lin = 10000;
+     pr.thermo_Nz_log = 500;
+     th.thermodynamics_verbose = 0;
+@@ -1418,35 +1418,35 @@ int input_try_unknown_parameters(double * unknown_parameter,
+ 
+   if (pfzw->required_computation_stage >= cs_perturbations){
+     if (input_verbose>2)
+-      printf("Stage 3: perturbations\n");
++      printf("UDM: perturbations\n");
+     pt.perturbations_verbose = 0;
+     class_call_except(perturbations_init(&pr,&ba,&th,&pt), pt.error_message, errmsg, thermodynamics_free(&th);background_free(&ba);perturbations_free_input(&pt););
+   }
+ 
+   if (pfzw->required_computation_stage >= cs_primordial){
+     if (input_verbose>2)
+-      printf("Stage 4: primordial\n");
++      printf("UDM: primordial\n");
+     pm.primordial_verbose = 0;
+     class_call_except(primordial_init(&pr,&pt,&pm), pm.error_message, errmsg, perturbations_free(&pt);thermodynamics_free(&th);background_free(&ba));
+   }
+ 
+   if (pfzw->required_computation_stage >= cs_nonlinear){
+     if (input_verbose>2)
+-      printf("Stage 5: nonlinear\n");
++      printf("UDM: nonlinear\n");
+     fo.fourier_verbose = 0;
+     class_call_except(fourier_init(&pr,&ba,&th,&pt,&pm,&fo), fo.error_message, errmsg, primordial_free(&pm);perturbations_free(&pt);thermodynamics_free(&th);background_free(&ba));
+   }
+ 
+   if (pfzw->required_computation_stage >= cs_transfer){
+     if (input_verbose>2)
+-      printf("Stage 6: transfer\n");
++      printf("UDM: transfer\n");
+     tr.transfer_verbose = 0;
+     class_call_except(transfer_init(&pr,&ba,&th,&pt,&fo,&tr), tr.error_message, errmsg, fourier_free(&fo);primordial_free(&pm);perturbations_free(&pt);thermodynamics_free(&th);background_free(&ba));
+   }
+ 
+   if (pfzw->required_computation_stage >= cs_spectra){
+     if (input_verbose>2)
+-      printf("Stage 7: spectra\n");
++      printf("UDM: spectra\n");
+     hr.harmonic_verbose = 0;
+     class_call_except(harmonic_init(&pr,&ba,&pt,&pm,&fo,&tr,&hr),hr.error_message, errmsg, transfer_free(&tr);fourier_free(&fo);primordial_free(&pm);perturbations_free(&pt);thermodynamics_free(&th);background_free(&ba));
+   }
+@@ -2356,8 +2356,8 @@ int input_read_parameters_species(struct file_content * pfc,
+   /** Summary: */
+ 
+   /** - Define local variables */
+-  int flag1, flag2, flag3;
+-  double param1, param2, param3;
++  int flag1, flag2, flag3, flag4, flag5;
++  double param1, param2, param3, param4, param5;
+   char string1[_ARGUMENT_LENGTH_MAX_];
+   int fileentries;
+   int N_ncdm=0, n, entries_read;
+@@ -2366,6 +2366,7 @@ int input_read_parameters_species(struct file_content * pfc,
+   double fnu_factor;
+   double Omega_tot;
+   double sigma_B; // Stefan-Boltzmann constant
++  double hbar, Mpl_red_class; /* canonical UDM KG normalization */
+   double stat_f_idr = 7./8.;
+   double f_cdm=1., f_idm=0.;
+   short has_m_budget = _FALSE_, has_cdm_userdefined = _FALSE_;
+@@ -3197,6 +3198,53 @@ int input_read_parameters_species(struct file_content * pfc,
+   class_call(parser_read_double(pfc,"Omega_fld",&param2,&flag2,errmsg),
+              errmsg,
+              errmsg);
++  /* dedicated UDM is activated explicitly. It follows the CLASS matter
++     convention of accepting exactly one of Omega_udm or omega_udm. Without
++     use_udm=yes, only Omega_udm retains the UDM Omega_fld alias. */
++  class_call(parser_read_string(pfc,"use_udm",&string1,&flag4,errmsg),
++             errmsg,
++             errmsg);
++  if (flag4 == _TRUE_) {
++    if (string_begins_with(string1,'y') || string_begins_with(string1,'Y')) {
++      pba->use_udm = _TRUE_;
++    }
++    else {
++      pba->use_udm = _FALSE_;
++    }
++  }
++  class_call(parser_read_double(pfc,"Omega_udm",&param4,&flag4,errmsg),
++             errmsg,
++             errmsg);
++  class_call(parser_read_double(pfc,"omega_udm",&param5,&flag5,errmsg),
++             errmsg,
++             errmsg);
++  class_test((flag4 == _TRUE_) && (flag5 == _TRUE_),
++             errmsg,
++             "You can only enter one of 'Omega_udm' or 'omega_udm'.");
++  if (pba->use_udm == _TRUE_) {
++    class_test((flag4 == _FALSE_) && (flag5 == _FALSE_),
++               errmsg,
++               "You set use_udm=yes, so you must pass exactly one of Omega_udm or omega_udm.");
++    if (flag4 == _TRUE_) {
++      pba->Omega0_udm = param4;
++    }
++    else {
++      pba->Omega0_udm = param5/pba->h/pba->h;
++    }
++  }
++  else {
++    class_test(flag5 == _TRUE_,
++               errmsg,
++               "The physical-density input 'omega_udm' requires use_udm=yes; the legacy UDM fluid alias accepts only Omega_udm.");
++    /* Omega_udm is an alias for Omega_fld in the UDM effective-fluid toy model. */
++    class_test((flag2 == _TRUE_) && (flag4 == _TRUE_),
++               errmsg,
++               "You can only enter one of 'Omega_fld' or 'Omega_udm' unless use_udm=yes.");
++    if (flag4 == _TRUE_) {
++      param2 = param4;
++      flag2 = _TRUE_;
++    }
++  }
+   class_call(parser_read_double(pfc,"Omega_scf",&param3,&flag3,errmsg),
+              errmsg,
+              errmsg);
+@@ -3226,7 +3274,8 @@ int input_read_parameters_species(struct file_content * pfc,
+   Omega_tot += pba->Omega0_dcdmdr;
+   Omega_tot += pba->Omega0_idr;
+   Omega_tot += pba->Omega0_ncdm_tot;
+-  /* Step 1 */
++  Omega_tot += pba->Omega0_udm;
++  /* UDM */
+   if (flag1 == _TRUE_){
+     pba->Omega0_lambda = param1;
+     Omega_tot += pba->Omega0_lambda;
+@@ -3239,7 +3288,7 @@ int input_read_parameters_species(struct file_content * pfc,
+     pba->Omega0_scf = param3;
+     Omega_tot += pba->Omega0_scf;
+   }
+-  /* Step 2 */
++  /* UDM */
+   if (flag1 == _FALSE_) {
+     /* Fill with Lambda */
+     pba->Omega0_lambda= 1. - pba->Omega0_k - Omega_tot;
+@@ -3264,6 +3313,147 @@ int input_read_parameters_species(struct file_content * pfc,
+ 
+   /* ** END OF BUDGET EQUATION ** */
+ 
++  /** 8.udm) Dedicated UDM background species for UDM */
++  if (pba->use_udm == _TRUE_) {
++    class_read_double("m_tilde_eV",pba->udm_m_tilde_eV);
++    class_read_double("log10_m_eV",pba->udm_log10_m_eV);
++    class_read_double("z_osc",pba->udm_z_osc);
++    class_read_double("z_m_override",pba->udm_z_m_override);
++    class_read_double("udm_transition_width",pba->udm_transition_width);
++    class_read_double("udm_activation_width",pba->udm_activation_width); /* dedicated numerical post-handoff activation width */
++    class_read_double("udm_shooting_tolerance",pba->udm_shooting_tolerance);
++    class_read_int("udm_shooting_max_iter",pba->udm_shooting_max_iter);
++    class_read_double("phi_ini_fixed",pba->udm_phi_ini_fixed); /* fixed-amplitude production route */
++    class_read_flag("udm_include_in_metric",pba->udm_include_in_metric); /* UDM reserved bookkeeping flag */
++    class_read_flag("udm_include_in_total_matter",pba->udm_include_in_total_matter); /* UDM reserved bookkeeping flag */
++    class_read_flag("udm_include_in_lensing",pba->udm_include_in_lensing); /* UDM reserved bookkeeping flag */
++    class_read_double("udm_averaged_matching_window_lna",pba->udm_averaged_matching_window_lna); /* UDM parser/storage only */
++    class_read_int("udm_averaged_matching_samples",pba->udm_averaged_matching_samples); /* UDM parser/storage only */
++    pba->udm_averaged_matching = udm_avg_match_no; /* UDM default preserves byte identity */
++    class_call(parser_read_string(pfc,"udm_averaged_matching",&string1,&flag1,errmsg),
++               errmsg,
++               errmsg);
++    if (flag1 == _TRUE_) {
++      if (strcmp(string1,"no") == 0) {
++        pba->udm_averaged_matching = udm_avg_match_no;
++      }
++      else if (strcmp(string1,"active") == 0) {
++        pba->udm_averaged_matching = udm_avg_match_active;
++      }
++      else {
++        class_stop(errmsg,
++                   "You specified 'udm_averaged_matching' as '%s'. It has to be one of {'no','active'}.",
++                   string1);
++      }
++    }
++    class_test(pba->Omega0_udm <= 0.,
++               errmsg,
++               "Dedicated UDM requires Omega_udm > 0, but Omega_udm=%g.",
++               pba->Omega0_udm);
++    class_test(pba->udm_m_tilde_eV <= 0.,
++               errmsg,
++               "Dedicated UDM requires m_tilde_eV > 0, but m_tilde_eV=%g.",
++               pba->udm_m_tilde_eV);
++    class_test(pba->udm_z_osc <= 0.,
++               errmsg,
++               "Dedicated UDM requires z_osc > 0 in UDM, but z_osc=%g.",
++               pba->udm_z_osc);
++    class_test(pba->udm_transition_width <= 0.,
++               errmsg,
++               "Dedicated UDM requires udm_transition_width > 0, but udm_transition_width=%g.",
++               pba->udm_transition_width);
++    class_test((pba->udm_activation_width <= 0.) ||
++               !isfinite(pba->udm_activation_width),
++               errmsg,
++               "Dedicated UDM requires finite udm_activation_width > 0, but udm_activation_width=%g.",
++               pba->udm_activation_width);
++    class_test((pba->udm_shooting_tolerance <= 0.) ||
++               !isfinite(pba->udm_shooting_tolerance),
++               errmsg,
++               "Dedicated UDM requires finite udm_shooting_tolerance > 0, but udm_shooting_tolerance=%g.",
++               pba->udm_shooting_tolerance);
++    class_test(pba->udm_shooting_max_iter < 3,
++               errmsg,
++               "Dedicated UDM requires udm_shooting_max_iter >= 3, but udm_shooting_max_iter=%d.",
++               pba->udm_shooting_max_iter);
++    class_test(!isfinite(pba->udm_phi_ini_fixed) ||
++               ((pba->udm_phi_ini_fixed <= 0.) && (pba->udm_phi_ini_fixed != -1.)),
++               pba->error_message,
++               "Dedicated UDM phi_ini_fixed must be finite and positive, or -1 to retain abundance shooting; got %g.",
++               pba->udm_phi_ini_fixed);
++    class_test(pba->udm_averaged_matching_window_lna <= 0.,
++               errmsg,
++               "Dedicated UDM requires udm_averaged_matching_window_lna > 0, but udm_averaged_matching_window_lna=%g.",
++               pba->udm_averaged_matching_window_lna);
++    class_test(pba->udm_averaged_matching_samples < 3,
++               errmsg,
++               "Dedicated UDM requires udm_averaged_matching_samples >= 3, but udm_averaged_matching_samples=%d.",
++               pba->udm_averaged_matching_samples);
++    class_test((pba->udm_averaged_matching_samples % 2) == 0,
++               errmsg,
++               "Dedicated UDM requires odd udm_averaged_matching_samples, but udm_averaged_matching_samples=%d.",
++               pba->udm_averaged_matching_samples);
++    class_test((pba->udm_include_in_total_matter == _TRUE_) &&
++               (pba->udm_include_in_metric == _FALSE_),
++               errmsg,
++               "Dedicated UDM requires udm_include_in_metric = yes when udm_include_in_total_matter = yes. Total matter transfer inclusion without metric-source inclusion is not self-consistent.");
++
++    pba->udm_m_eV = pow(10.,pba->udm_log10_m_eV);
++    pba->udm_lambda = pow(pba->udm_m_eV/pba->udm_m_tilde_eV,4.);
++    pba->udm_m = pba->udm_m_eV*_eV_/(_h_P_/(2.*_PI_))/_c_*_Mpc_over_m_;
++    /* canonical UDM KG normalization. With
++       Phi=sqrt(3)*Mpl_red_class*phi_code and
++       rho_class=rho_phys/(3*Mpl_red_class^2), the code-level potential is
++       V_code=m_class^2*phi_code^2/2
++              +(3*lambda*Mpl_red_class^2)*phi_code^4/4. */
++    hbar = _h_P_/(2.*_PI_);
++    Mpl_red_class = sqrt(pow(_c_,3)/(8.*_PI_*_G_*hbar))*_Mpc_over_m_;
++    pba->udm_lambda_kg_class = 3.*pba->udm_lambda*Mpl_red_class*Mpl_red_class;
++
++    if (pba->udm_z_m_override > 0.) {
++      pba->udm_z_m = pba->udm_z_m_override;
++    }
++    else {
++      double udm_Omega0_dm = pba->Omega0_cdm+pba->Omega0_udm;
++      double udm_fraction;
++
++      class_test(!isfinite(udm_Omega0_dm) || (udm_Omega0_dm <= 0.),
++                 errmsg,
++                 "Dedicated UDM mixed-model z_m requires finite Omega_cdm+Omega_udm > 0, got %g.",
++                 udm_Omega0_dm);
++      udm_fraction = pba->Omega0_udm/udm_Omega0_dm;
++      class_test(!isfinite(udm_fraction) || (udm_fraction <= 0.) || (udm_fraction > 1.),
++                 errmsg,
++                 "Dedicated UDM mixed-model z_m requires 0 < f_udm=Omega_udm/(Omega_cdm+Omega_udm) <= 1, got %g.",
++                 udm_fraction);
++
++      /* Preserve the historical full-UDM calibration z_m=4446 at
++         m_tilde=1 eV, while applying the manuscript mixed-model scaling
++         1+z_m proportional to m_tilde^(4/3) f_udm^(-1/3). */
++      pba->udm_z_m = (1.+4446.)*pow(pba->udm_m_tilde_eV,4./3.)
++        *pow(udm_fraction,-1./3.)-1.;
++    }
++
++    class_test(pba->udm_z_osc <= pba->udm_z_m,
++               errmsg,
++               "Dedicated UDM requires z_osc > z_m, but z_osc=%g and z_m=%g.",
++               pba->udm_z_osc,
++               pba->udm_z_m);
++    if (input_verbose > 0) {
++      printf(" -> UDM: Omega_udm=%g, m_tilde_eV=%g, m_eV=%g, lambda=%e, z_m=%g, z_osc=%g\n",
++             pba->Omega0_udm,
++             pba->udm_m_tilde_eV,
++             pba->udm_m_eV,
++             pba->udm_lambda,
++             pba->udm_z_m,
++             pba->udm_z_osc);
++      printf(" -> UDM bookkeeping flags: metric=%s, total_matter=%s, lensing=%s\n",
++             pba->udm_include_in_metric == _TRUE_ ? "yes" : "no",
++             pba->udm_include_in_total_matter == _TRUE_ ? "yes" : "no",
++             pba->udm_include_in_lensing == _TRUE_ ? "yes" : "no");
++    }
++  }
++
+   /** 8.a) If Omega fluid is different from 0 */
+   if (pba->Omega0_fld != 0.) {
+     /** 8.a.1) PPF approximation */
+@@ -3294,6 +3484,10 @@ int input_read_parameters_species(struct file_content * pfc,
+       else if ((strstr(string1,"EDE") != NULL) || (strstr(string1,"ede") != NULL)) {
+         pba->fluid_equation_of_state = EDE;
+       }
++      /* UDM phenomenological UDM background mode. */
++      else if ((strstr(string1,"UDM") != NULL) || (strstr(string1,"udm") != NULL)) {
++        pba->fluid_equation_of_state = UDM;
++      }
+       else {
+         class_stop(errmsg,"incomprehensible input '%s' for the field 'fluid_equation_of_state'",string1);
+       }
+@@ -3313,6 +3507,51 @@ int input_read_parameters_species(struct file_content * pfc,
+       class_read_double("Omega_EDE",pba->Omega_EDE);
+       class_read_double("cs2_fld",pba->cs2_fld);
+     }
++    if (pba->fluid_equation_of_state == UDM) {
++      /** 8.a.2.4) UDM effective-fluid toy model for arXiv:2502.11568 */
++      class_read_double("m_tilde_eV",pba->m_tilde_eV);
++      class_read_double("z_osc",pba->z_osc);
++      class_read_double("z_m_override",pba->z_m_override);
++      class_read_double("udm_transition_width",pba->udm_transition_width);
++      class_read_double("cs2_fld",pba->cs2_fld);
++
++      class_test(pba->m_tilde_eV <= 0.,
++                 errmsg,
++                 "UDM requires m_tilde_eV > 0, but you entered m_tilde_eV=%g.",
++                 pba->m_tilde_eV);
++
++      if (pba->z_m_override > 0.) {
++        pba->z_m = pba->z_m_override;
++      }
++      else {
++        pba->z_m = 4446.*pow(pba->m_tilde_eV,4./3.);
++      }
++
++      class_test(pba->z_osc <= pba->z_m,
++                 errmsg,
++                 "UDM requires z_osc > z_m, but you entered z_osc=%g and z_m=%g.",
++                 pba->z_osc,
++                 pba->z_m);
++
++      class_test(pba->z_m < 0.,
++                 errmsg,
++                 "UDM requires z_m >= 0, but z_m=%g.",
++                 pba->z_m);
++
++      class_test(pba->udm_transition_width <= 0.,
++                 errmsg,
++                 "UDM requires udm_transition_width > 0, but you entered udm_transition_width=%g.",
++                 pba->udm_transition_width);
++
++      if (input_verbose > 0) {
++        printf(" -> UDM effective fluid: m_tilde_eV=%g, z_m=%g, z_osc=%g, width_ln_a=%g, Omega_udm/Omega_fld=%g\n",
++               pba->m_tilde_eV,
++               pba->z_m,
++               pba->z_osc,
++               pba->udm_transition_width,
++               pba->Omega0_fld);
++      }
++    }
+   }
+ 
+   /** 8.b) If Omega scalar field (SCF) is different from 0 */
+@@ -5903,6 +6142,35 @@ int input_default_params(struct background *pba,
+   /* ** ADDITIONAL SPECIES ** */
+ 
+   /** 9) Dark energy contributions */
++  /** UDM dedicated UDM defaults */
++  pba->Omega0_udm = 0.;
++  pba->use_udm = _FALSE_;
++  pba->udm_m_tilde_eV = 1.;
++  pba->udm_log10_m_eV = -22.;
++  pba->udm_m_eV = 1.e-22;
++  pba->udm_m = 0.;
++  pba->udm_lambda = 0.;
++  pba->udm_lambda_kg_class = 0.;
++  pba->udm_z_osc = 1.e6;
++  pba->udm_z_m = 4446.;
++  pba->udm_z_m_override = -1.;
++  pba->udm_phi_ini = 0.;
++  pba->udm_phi_ini_analytic = 0.;
++  pba->udm_phi_ini_fixed = -1.;
++  pba->udm_phi_prime_ini = 0.;
++  pba->udm_transition_width = 0.05;
++  pba->udm_activation_width = 1.25e-3; /* validated preferred numerical activation width */
++  pba->udm_shooting_tolerance = 1.e-8;
++  pba->udm_shooting_max_iter = 100;
++  pba->udm_Omega0_realized = 0.;
++  pba->udm_shooting_relative_error = 0.;
++  pba->udm_shooting_iterations = 0;
++  pba->udm_include_in_metric = _FALSE_; /* UDM reserved bookkeeping flag, default off */
++  pba->udm_include_in_total_matter = _FALSE_; /* UDM reserved bookkeeping flag, default off */
++  pba->udm_include_in_lensing = _FALSE_; /* UDM reserved bookkeeping flag, default off */
++  pba->udm_averaged_matching = udm_avg_match_no; /* UDM default off preserves output byte identity */
++  pba->udm_averaged_matching_window_lna = 0.03; /* UDM parser/storage default */
++  pba->udm_averaged_matching_samples = 9; /* UDM odd parser/storage default */
+   pba->Omega0_fld = 0.;
+   pba->Omega0_scf = 0.;
+   pba->Omega0_lambda = 1.-pba->Omega0_k-pba->Omega0_g-pba->Omega0_ur-pba->Omega0_b-pba->Omega0_cdm-pba->Omega0_ncdm_tot-pba->Omega0_dcdmdr - pba->Omega0_idr -pba->Omega0_idm;
+@@ -5918,6 +6186,12 @@ int input_default_params(struct background *pba,
+   pba->wa_fld = 0.;
+   /** 9.a.2.2) 'EDE' case */
+   pba->Omega_EDE = 0.;
++  /** 9.a.2.3) 'UDM' effective-fluid case */
++  pba->m_tilde_eV = 1.;
++  pba->z_osc = 1.e6;
++  pba->z_m = 4446.;
++  pba->z_m_override = -1.;
++  pba->udm_transition_width = 0.05;
+   /** 9.b) Omega scalar field */
+   /** 9.b.1) Potential parameters and initial conditions */
+   pba->scf_parameters = NULL;
+diff --git a/source/perturbations.c b/source/perturbations.c
+index c78fe4376d2eeebfbf4ff0cfca13b048d4513fa0..905564495135160d2d5d31ad49c32bf1fbca05de 100644
+--- a/source/perturbations.c
++++ b/source/perturbations.c
+@@ -27,6 +27,668 @@
+ #include "perturbations.h"
+ #include "parallel.h"
+ 
++/* UDM helper for the dedicated UDM averaged-fluid perturbation.
++   This mirrors the UDM background w(a) after z_osc. */
++static double perturbations_udm_w_averaged(
++                                           struct background * pba,
++                                           double a
++                                           ) {
++  double a_m, width, y_m, s_m;
++
++  if (a <= 0.)
++    return 0.;
++
++  a_m = 1./(1.+pba->udm_z_m);
++  width = pba->udm_transition_width;
++  y_m = (log(a)-log(a_m))/width;
++  s_m = 0.5*(1.+tanh(y_m));
++
++  return (1.-s_m)/3.;
++}
++
++/* derivative dw/da for the UDM averaged-fluid regime. */
++static double perturbations_udm_dw_over_da_averaged(
++                                                    struct background * pba,
++                                                    double a
++                                                    ) {
++  double a_m, width, y_m;
++
++  if (a <= 0.)
++    return 0.;
++
++  a_m = 1./(1.+pba->udm_z_m);
++  width = pba->udm_transition_width;
++  y_m = (log(a)-log(a_m))/width;
++
++  if (fabs(y_m) > 20.)
++    return 0.;
++
++  return -1./(6.*width*a*pow(cosh(y_m),2));
++}
++
++/* UDM effective sound speed. With
++   rho_CLASS=rho_phys/(3*Mpl_red_CLASS^2) and the canonical KG coefficient
++   udm_lambda_kg_class=3*lambda*Mpl_red_CLASS^2, the combination
++   udm_lambda_kg_class*rho_CLASS/m^4 is already the physical
++   Y=lambda*rho_phys/m^4.  No additional Planck/mass conversion belongs here. */
++static double perturbations_udm_cs2(
++                                    struct background * pba,
++                                    double k,
++                                    double a,
++                                    double rho_udm
++                                    ) {
++  double grad, self, numerator, denominator, cs2;
++
++  if ((a <= 0.) || (pba->udm_m <= 0.) || (rho_udm < 0.))
++    return 0.;
++
++  grad = pow(k/(2.*pba->udm_m*a),2);
++  self = pba->udm_lambda_kg_class*rho_udm/pow(pba->udm_m,4);
++
++  numerator = grad + 3.*self/4.;
++  denominator = 1. + grad + 9.*self/4.;
++
++  if ((denominator <= 0.) || !isfinite(numerator) || !isfinite(denominator))
++    return 0.;
++
++  cs2 = numerator/denominator;
++
++  if (!isfinite(cs2))
++    return 0.;
++  if (cs2 < 0.)
++    return 0.;
++  if (cs2 > 1.)
++    return 1.;
++
++  return cs2;
++}
++
++/* UDM calibrated matching values. Each entry is the quadratic
++   local-envelope extrapolation of the last 16 complete proper-time-weighted
++   KG cycles, constructed offline using only samples with a<a_switch. */
++static int perturbations_udm_stage2c_pre_switch_average(
++                                                        double k,
++                                                        double * avg_rho,
++                                                        double * avg_p,
++                                                        double * avg_delta_rho,
++                                                        double * avg_momentum,
++                                                        double * avg_delta_p
++                                                        ) {
++  static const double kval[5] = {0.5,1.0,1.2,1.5,2.0};
++  static const double rho[5] = {1.395789701050e11,1.395789635925e11,1.395789601057e11,1.395789693188e11,1.395789654156e11};
++  static const double pressure[5] = {4.652963033607e10,4.652801205200e10,4.652453527187e10,4.652469674984e10,4.652963028137e10};
++  static const double delta_rho[5] = {-2.115253131047e9,-8.400352097288e9,-1.245127532127e10,-1.908949440096e10,-3.362272462002e10};
++  static const double momentum[5] = {-2.785568577018e7,-4.381203455814e8,-9.216304221511e8,-2.241298666203e9,-7.025705780438e9};
++  static const double delta_p[5] = {-7.404452277921e8,-2.934826028578e9,-4.359869034440e9,-6.742427459930e9,-1.173164347920e10};
++  int index;
++
++  for (index=0; index<5; index++) {
++    if (fabs(k-kval[index]) <= 1.e-10*MAX(1.,kval[index])) {
++      *avg_rho = rho[index];
++      *avg_p = pressure[index];
++      *avg_delta_rho = delta_rho[index];
++      *avg_momentum = momentum[index];
++      *avg_delta_p = delta_p[index];
++      return _TRUE_;
++    }
++  }
++  return _FALSE_;
++}
++
++/* UDM perturbation-transition boundary. */
++static double perturbations_udm_a_fluid_transition(
++                                                   struct background * pba
++                                                   ) {
++  return 1./(1.+pba->udm_z_osc);
++}
++
++/* UDM perturbation-transition redshift helper. */
++static double perturbations_udm_z_fluid_transition(
++                                                   struct background * pba
++                                                   ) {
++  return pba->udm_z_osc;
++}
++
++/* UDM potential curvature in UDM CLASS units. */
++static double perturbations_udm_V_phiphi(
++                                         struct background * pba,
++                                         double phi
++                                         ) {
++  return pba->udm_m*pba->udm_m + 3.*pba->udm_lambda_kg_class*phi*phi;
++}
++
++/* Convert KG field variables to fluid-like density, momentum, and pressure. */
++static int perturbations_udm_kg_stress_energy(
++                                            struct background * pba,
++                                            enum possible_gauges gauge,
++                                            double k,
++                                            double a,
++                                            double psi,
++                                            double phi,
++                                            double phi_prime,
++                                            double delta_phi,
++                                            double delta_phi_prime,
++                                            double rho_udm,
++                                            double p_udm,
++                                            double * delta_udm,
++                                            double * theta_udm,
++                                            double * delta_p_udm
++                                            ) {
++  double a2, V_phi, delta_rho, delta_p, rho_plus_p_theta, rho_plus_p;
++
++  a2 = a*a;
++  V_phi = pba->udm_m*pba->udm_m*phi + pba->udm_lambda_kg_class*phi*phi*phi;
++
++  delta_rho = phi_prime*delta_phi_prime/a2 + V_phi*delta_phi;
++  delta_p = phi_prime*delta_phi_prime/a2 - V_phi*delta_phi;
++  if (gauge == newtonian)
++    delta_rho -= phi_prime*phi_prime*psi/a2;
++  if (gauge == newtonian)
++    delta_p -= phi_prime*phi_prime*psi/a2;
++
++  rho_plus_p_theta = k*k*phi_prime*delta_phi/a2;
++  rho_plus_p = rho_udm + p_udm;
++
++  if ((rho_udm > 0.) && isfinite(delta_rho))
++    *delta_udm = delta_rho/rho_udm;
++  else
++    *delta_udm = 0.;
++
++  if ((fabs(rho_plus_p) > 1.e-60) && (fabs(phi_prime) > 1.e-80) && isfinite(rho_plus_p_theta))
++    *theta_udm = rho_plus_p_theta/rho_plus_p;
++  else
++    *theta_udm = 0.;
++
++  if (!isfinite(*delta_udm))
++    *delta_udm = 0.;
++  if (!isfinite(*theta_udm))
++    *theta_udm = 0.;
++  if (delta_p_udm != NULL) {
++    if (isfinite(delta_p))
++      *delta_p_udm = delta_p;
++    else
++      *delta_p_udm = 0.;
++  }
++
++  return _SUCCESS_;
++}
++
++/* Finite relative mismatch measure used by matching guards. */
++static double perturbations_udm_safe_jump_ratio(
++                                               double pre,
++                                               double post
++                                               ) {
++  double floor, denom, ratio;
++
++  floor = 1.e-300;
++  if ((!isfinite(pre)) || (!isfinite(post)))
++    return 0.;
++
++  denom = MAX(MAX(fabs(pre),fabs(post)),floor);
++  ratio = fabs(post-pre)/denom;
++  if (!isfinite(ratio))
++    return 0.;
++
++  return ratio;
++}
++
++/* UDM contribution to total-matter bookkeeping. */
++static double perturbations_udm_matter_weight(
++                                             struct background * pba,
++                                             double a,
++                                             double w_udm
++                                             ) {
++  double a_fluid, weight;
++
++  a_fluid = perturbations_udm_a_fluid_transition(pba);
++  if (a < a_fluid)
++    weight = 0.;
++  else
++    weight = 1. - 3.*w_udm;
++
++  if (weight < 0.)
++    weight = 0.;
++  if (weight > 1.)
++    weight = 1.;
++  if (!isfinite(weight))
++    weight = 0.;
++
++  return weight;
++}
++
++/* UDM helper. Insert the KG-to-fluid perturbation transition as
++   an accepted integration interval boundary for scalar UDM modes. For
++   delay_factor=1 this is exactly the historical tau_osc boundary. */
++static int perturbations_udm_insert_tau_osc_interval(
++                                                     struct precision * ppr,
++                                                     struct background * pba,
++                                                     struct perturbations * ppt,
++                                                     int index_md,
++                                                     int ppw_ap_size,
++                                                     int * p_interval_number,
++                                                     double ** p_interval_limit,
++                                                     int *** p_interval_approx,
++                                                     int * p_inserted,
++                                                     int * p_insert_index,
++                                                     double * p_tau_osc
++                                                     ) {
++  int interval_number, index_interval, index_ap, split_index;
++  double tau_osc, z_fluid, tolerance;
++  double * old_interval_limit;
++  double * new_interval_limit;
++  int ** old_interval_approx;
++  int ** new_interval_approx;
++
++  *p_inserted = _FALSE_;
++  *p_insert_index = -1;
++  *p_tau_osc = 0.;
++
++  if ((pba->has_udm == _FALSE_) || (index_md != ppt->index_md_scalars))
++    return _SUCCESS_;
++
++  z_fluid = perturbations_udm_z_fluid_transition(pba); /* UDM generalized transition redshift */
++  class_call(background_tau_of_z(pba,
++                                 z_fluid,
++                                 &tau_osc),
++             pba->error_message,
++             ppt->error_message);
++
++  if (!isfinite(tau_osc))
++    return _SUCCESS_;
++
++  interval_number = *p_interval_number;
++  old_interval_limit = *p_interval_limit;
++  old_interval_approx = *p_interval_approx;
++
++  if ((tau_osc <= old_interval_limit[0]) ||
++      (tau_osc >= old_interval_limit[interval_number]))
++    return _SUCCESS_;
++
++  tolerance = ppr->tol_tau_approx*MAX(tau_osc,1.);
++  for (index_interval=0; index_interval<=interval_number; index_interval++) {
++    if (fabs(tau_osc-old_interval_limit[index_interval]) <= tolerance)
++      return _SUCCESS_;
++  }
++
++  split_index = -1;
++  for (index_interval=0; index_interval<interval_number; index_interval++) {
++    if ((old_interval_limit[index_interval] < tau_osc) &&
++        (tau_osc < old_interval_limit[index_interval+1])) {
++      split_index = index_interval;
++      break;
++    }
++  }
++
++  if (split_index < 0)
++    return _SUCCESS_;
++
++  class_alloc(new_interval_limit,
++              (interval_number+2)*sizeof(double),
++              ppt->error_message);
++
++  class_alloc(new_interval_approx,
++              (interval_number+1)*sizeof(int *),
++              ppt->error_message);
++
++  for (index_interval=0; index_interval<interval_number+1; index_interval++) {
++    class_alloc(new_interval_approx[index_interval],
++                ppw_ap_size*sizeof(int),
++                ppt->error_message);
++  }
++
++  for (index_interval=0; index_interval<=split_index; index_interval++)
++    new_interval_limit[index_interval] = old_interval_limit[index_interval];
++  new_interval_limit[split_index+1] = tau_osc; /* tau_fluid; variable name retained for default-path continuity */
++  for (index_interval=split_index+1; index_interval<=interval_number; index_interval++)
++    new_interval_limit[index_interval+1] = old_interval_limit[index_interval];
++
++  for (index_interval=0; index_interval<interval_number+1; index_interval++) {
++    int source_interval = index_interval;
++    if (index_interval > split_index+1)
++      source_interval = index_interval-1;
++    else if (index_interval == split_index+1)
++      source_interval = split_index;
++
++    for (index_ap=0; index_ap<ppw_ap_size; index_ap++)
++      new_interval_approx[index_interval][index_ap] = old_interval_approx[source_interval][index_ap];
++  }
++
++  for (index_interval=0; index_interval<interval_number; index_interval++)
++    free(old_interval_approx[index_interval]);
++  free(old_interval_approx);
++  free(old_interval_limit);
++
++  *p_interval_number = interval_number+1;
++  *p_interval_limit = new_interval_limit;
++  *p_interval_approx = new_interval_approx;
++  *p_inserted = _TRUE_;
++  *p_insert_index = split_index+1;
++  *p_tau_osc = tau_osc; /* tau_fluid for non-default delay */
++
++  return _SUCCESS_;
++}
++
++/* Accumulate the pre-transition window used by active averaged matching. */
++static int perturbations_udm_accumulate_matching_average(
++                                                                 struct background * pba,
++                                                                 struct perturbations * ppt,
++                                                                 enum possible_gauges gauge,
++                                                                 double k,
++                                                                 double a,
++                                                                 double a_prime_over_a,
++                                                                 double psi,
++                                                                 double phi,
++                                                                 double phi_prime,
++                                                                 double delta_phi,
++                                                                 double delta_phi_prime,
++                                                                 double rho_udm,
++                                                                 double p_udm,
++                                                                 double delta_match_strict,
++                                                                 double theta_match_strict,
++                                                                 double delta_p_match_strict,
++                                                                 struct perturbations_workspace * ppw
++                                                                 ) {
++  double a_fluid, a_start, a_end, a_m, a2, k2, V_phi;
++  double kinetic_piece, potential_piece, delta_rho, delta_p, momentum_source;
++  double rho_plus_p, theta_candidate, n, strict_delta_rho, strict_momentum;
++  double fluid_delta_p, theta_post, w_udm, dw_over_da_udm, w_prime_udm;
++  double cs2_udm, ca2_udm, one_plus_w_udm;
++
++  if ((pba->has_udm == _FALSE_) || (pba->udm_averaged_matching == udm_avg_match_no))
++    return _SUCCESS_;
++
++  a_fluid = perturbations_udm_a_fluid_transition(pba);
++  a_start = a_fluid*exp(-pba->udm_averaged_matching_window_lna);
++  a_end = a_fluid;
++  a_m = 1./(1.+pba->udm_z_m);
++
++
++  if ((!isfinite(a_start)) || (!isfinite(a_end)) || (a_start <= 0.) ||
++      (a_start >= a_end) || (a_fluid >= a_m)) {
++    return _SUCCESS_;
++  }
++
++  if ((a < a_start) || (a >= a_end))
++    return _SUCCESS_;
++
++  a2 = a*a;
++  k2 = k*k;
++  V_phi = pba->udm_m*pba->udm_m*phi + pba->udm_lambda_kg_class*phi*phi*phi;
++  kinetic_piece = phi_prime*delta_phi_prime/a2;
++  potential_piece = V_phi*delta_phi;
++  delta_rho = kinetic_piece + potential_piece;
++  delta_p = kinetic_piece - potential_piece;
++  if (gauge == newtonian) {
++    delta_rho -= phi_prime*phi_prime*psi/a2;
++    delta_p -= phi_prime*phi_prime*psi/a2;
++  }
++  momentum_source = k2*phi_prime*delta_phi/a2;
++  rho_plus_p = rho_udm + p_udm;
++  theta_candidate = (fabs(rho_plus_p) > 1.e-60) ? momentum_source/rho_plus_p : 0.;
++  if (!isfinite(theta_candidate)) {
++    theta_candidate = 0.;
++  }
++
++  if (!isfinite(delta_rho) || !isfinite(delta_p) || !isfinite(momentum_source) ||
++      !isfinite(kinetic_piece) || !isfinite(potential_piece) ||
++      !isfinite(rho_plus_p)) {
++    return _SUCCESS_;
++  }
++
++  w_udm = perturbations_udm_w_averaged(pba,a);
++  cs2_udm = perturbations_udm_cs2(pba,k,a,rho_udm);
++  one_plus_w_udm = 1.+w_udm;
++  ca2_udm = w_udm;
++  if ((one_plus_w_udm > 1.e-12) && (k2 > 0.) && (a_prime_over_a != 0.)) {
++    dw_over_da_udm = perturbations_udm_dw_over_da_averaged(pba,a);
++    w_prime_udm = dw_over_da_udm*a_prime_over_a*a;
++    ca2_udm = w_udm - w_prime_udm/3./one_plus_w_udm/a_prime_over_a;
++    if (!isfinite(ca2_udm))
++      ca2_udm = w_udm;
++  }
++  theta_post = theta_candidate;
++  fluid_delta_p = cs2_udm*delta_rho;
++  if ((one_plus_w_udm > 1.e-12) && (k2 > 0.) && (a_prime_over_a != 0.))
++    fluid_delta_p += (cs2_udm-ca2_udm)*(3.*a_prime_over_a*rho_plus_p*theta_post/k2);
++  if (!isfinite(fluid_delta_p)) {
++    fluid_delta_p = 0.;
++  }
++
++  if (ppw->udm_avg_sample_count_used <= 0.) {
++    ppw->udm_avg_delta_p_min = delta_p;
++    ppw->udm_avg_delta_p_max = delta_p;
++  }
++  if (delta_p < ppw->udm_avg_delta_p_min)
++    ppw->udm_avg_delta_p_min = delta_p;
++  if (delta_p > ppw->udm_avg_delta_p_max)
++    ppw->udm_avg_delta_p_max = delta_p;
++
++  n = ppw->udm_avg_sample_count_used + 1.;
++  ppw->udm_avg_delta_rho += (delta_rho-ppw->udm_avg_delta_rho)/n;
++  ppw->udm_avg_momentum += (momentum_source-ppw->udm_avg_momentum)/n;
++  ppw->udm_avg_delta_p += (delta_p-ppw->udm_avg_delta_p)/n;
++  ppw->udm_avg_fluid_delta_p +=
++    (fluid_delta_p-ppw->udm_avg_fluid_delta_p)/n;
++  ppw->udm_avg_delta_p_sq_avg += (delta_p*delta_p-ppw->udm_avg_delta_p_sq_avg)/n;
++  ppw->udm_avg_sample_count_used = n;
++
++  strict_delta_rho = delta_match_strict*rho_udm;
++  strict_momentum = theta_match_strict*rho_plus_p;
++  ppw->udm_avg_density_mismatch =
++    perturbations_udm_safe_jump_ratio(ppw->udm_avg_delta_rho,strict_delta_rho);
++  ppw->udm_avg_momentum_jump =
++    perturbations_udm_safe_jump_ratio(ppw->udm_avg_momentum,strict_momentum);
++  ppw->udm_avg_pressure_jump =
++    perturbations_udm_safe_jump_ratio(ppw->udm_avg_delta_p,
++                                      ppw->udm_avg_fluid_delta_p);
++  ppw->udm_avg_delta_p_rms = sqrt(MAX(ppw->udm_avg_delta_p_sq_avg,0.));
++  ppw->udm_avg_finite_flag =
++    (isfinite(ppw->udm_avg_delta_rho) &&
++     isfinite(ppw->udm_avg_momentum) &&
++     isfinite(ppw->udm_avg_delta_p) &&
++     isfinite(ppw->udm_avg_fluid_delta_p) &&
++     isfinite(ppw->udm_avg_pressure_jump) &&
++     isfinite(ppw->udm_avg_density_mismatch) &&
++     isfinite(ppw->udm_avg_momentum_jump) &&
++     isfinite(ppw->udm_avg_delta_p_rms)) ? 1. : 0.;
++
++  return _SUCCESS_;
++}
++
++/* UDM helper. Apply KG-to-fluid reinitialization only at an
++   accepted tau_osc interval boundary, after perturbations_vector_init() has
++   copied the previous accepted state into the new interval vector. This is
++   deliberately outside perturbations_derivs(), so rejected trial steps cannot
++   mutate the matching state. The UDM smooth gate remains active until
++   UDM. */
++static int perturbations_udm_apply_tau_osc_reinit(
++                                                  struct background * pba,
++                                                  struct perturbations * ppt,
++                                                  int index_md,
++                                                  int index_ic,
++                                                  int index_k,
++                                                  double k,
++                                                  double tau_reinit,
++                                                  struct perturbations_workspace * ppw
++                                                  ) {
++  double a, delta_udm, theta_udm, theta_kg_candidate, theta_reinit_used, delta_p_udm;
++  double delta_phi_udm, delta_phi_prime_udm;
++  double rho_udm, p_udm, phi_prime_udm, theta_denominator;
++  double active_delta_udm, active_theta_udm;
++  double stage2c_avg_rho=0., stage2c_avg_p=0., stage2c_avg_delta_rho=0.;
++  double stage2c_avg_momentum=0., stage2c_avg_delta_p=0.;
++  double rho_post_background, p_post_background, rho_plus_p_post_background;
++  double * pvecback_fluid = NULL;
++  int stage2c_average_available;
++
++  if ((pba->has_udm == _FALSE_) || (index_md != ppt->index_md_scalars))
++    return _SUCCESS_;
++
++  if (ppw->udm_strict_reinit_done == _TRUE_)
++    return _SUCCESS_;
++
++  /* The matching state is the exact-KG left
++     limit at the unchanged physical handoff scale factor, never a spline
++     whose stencil crosses into the averaged-background branch. */
++  class_call(background_at_z_udm_kg_left(pba,
++                                         perturbations_udm_z_fluid_transition(pba),
++                                         normal_info,
++                                         &(ppw->last_index_back),
++                                         ppw->pvecback),
++             pba->error_message,
++             ppt->error_message);
++
++  a = ppw->pvecback[pba->index_bg_a];
++  rho_udm = ppw->pvecback[pba->index_bg_rho_udm];
++  p_udm = ppw->pvecback[pba->index_bg_p_udm];
++  phi_prime_udm = ppw->pvecback[pba->index_bg_phi_prime_udm];
++  theta_denominator = rho_udm + p_udm;
++  rho_post_background = rho_udm;
++  p_post_background = p_udm;
++  rho_plus_p_post_background = theta_denominator;
++  delta_phi_udm = ppw->pv->y[ppw->pv->index_pt_delta_phi_udm];
++  delta_phi_prime_udm = ppw->pv->y[ppw->pv->index_pt_delta_phi_prime_udm];
++
++  /* The production benchmarks use synchronous gauge. The handoff is evaluated
++     with zero local lapse correction at the accepted interval boundary. */
++  class_call(perturbations_udm_kg_stress_energy(pba,
++                                              ppt->gauge,
++                                              k,
++                                              a,
++                                              0.,
++                                              ppw->pvecback[pba->index_bg_phi_udm],
++                                              phi_prime_udm,
++                                              delta_phi_udm,
++                                              delta_phi_prime_udm,
++                                              rho_udm,
++                                              p_udm,
++                                              &delta_udm,
++                                              &theta_udm,
++                                              &delta_p_udm),
++             ppt->error_message,
++             ppt->error_message);
++
++  theta_kg_candidate = theta_udm;
++  ppw->udm_theta_kg_finite =
++    ((fabs(theta_denominator) > 1.e-60) &&
++     (fabs(phi_prime_udm) > 1.e-80) &&
++     isfinite(theta_kg_candidate)) ? 1. : 0.;
++
++  theta_reinit_used = 0.; /* UDM default and fallback theta reinit value. */
++  active_delta_udm = 0.;
++  active_theta_udm = 0.;
++
++  if (!isfinite(delta_udm) || !isfinite(theta_udm) ||
++      (fabs(delta_udm) > 1.e8) || (fabs(theta_udm) > 1.e8)) {
++    ppw->udm_matching_candidate = _FALSE_;
++    ppw->udm_delta_match = 0.;
++    ppw->udm_theta_match = 0.;
++    ppw->udm_delta_post_initial = 0.;
++    ppw->udm_theta_post_initial = 0.;
++    delta_udm = 0.;
++    theta_udm = 0.;
++  }
++  else {
++    ppw->udm_matching_candidate = _FALSE_;
++    ppw->udm_delta_match = delta_udm;
++    if (ppw->udm_theta_kg_finite == 1.) {
++      theta_reinit_used = theta_kg_candidate;
++    }
++    else {
++      theta_reinit_used = 0.;
++    }
++    theta_udm = theta_reinit_used;
++
++    /* Accepted-boundary averaged matching. It uses averaged KG density and
++       momentum for delta/theta and falls back to the instantaneous state if a
++       finite-state guard fails. */
++    ppw->udm_avg_active_fallback_reason = 0.;
++    stage2c_average_available = perturbations_udm_stage2c_pre_switch_average(
++      k,
++      &stage2c_avg_rho,
++      &stage2c_avg_p,
++      &stage2c_avg_delta_rho,
++      &stage2c_avg_momentum,
++      &stage2c_avg_delta_p);
++    if ((pba->udm_averaged_matching == udm_avg_match_active) &&
++        (stage2c_average_available == _TRUE_)) {
++      class_alloc(pvecback_fluid,pba->bg_size_normal*sizeof(double),ppt->error_message);
++      class_call(background_at_z_udm_efa_right(pba,
++                                               perturbations_udm_z_fluid_transition(pba),
++                                               normal_info,
++                                               &(ppw->last_index_back),
++                                               pvecback_fluid),
++                 pba->error_message,
++                 ppt->error_message);
++      rho_post_background = pvecback_fluid[pba->index_bg_rho_udm];
++      p_post_background = pvecback_fluid[pba->index_bg_p_udm];
++      rho_plus_p_post_background = rho_post_background+p_post_background;
++      free(pvecback_fluid);
++      pvecback_fluid = NULL;
++
++      ppw->udm_avg_delta_rho = stage2c_avg_delta_rho;
++      ppw->udm_avg_momentum = stage2c_avg_momentum;
++      ppw->udm_avg_delta_p = stage2c_avg_delta_p;
++      ppw->udm_avg_finite_flag = 1.;
++      active_delta_udm = stage2c_avg_delta_rho/rho_post_background;
++      active_theta_udm = stage2c_avg_momentum/rho_plus_p_post_background;
++      delta_udm = active_delta_udm;
++      theta_udm = active_theta_udm;
++      theta_reinit_used = theta_udm;
++    }
++    else if (pba->udm_averaged_matching == udm_avg_match_active) {
++      if (ppw->udm_avg_finite_flag != 1.) {
++        ppw->udm_avg_active_fallback_reason = 1.; /* non-finite averaged state */
++      }
++      else if (ppw->udm_avg_sample_count_used < 3.) {
++        ppw->udm_avg_active_fallback_reason = 2.; /* insufficient samples */
++      }
++      else if ((!isfinite(ppw->udm_avg_delta_rho)) ||
++               (!isfinite(ppw->udm_avg_momentum))) {
++        ppw->udm_avg_active_fallback_reason = 3.; /* non-finite averaged density/momentum */
++      }
++      else if ((!isfinite(rho_udm)) || (fabs(rho_udm) < 1.e-300)) {
++        ppw->udm_avg_active_fallback_reason = 4.; /* invalid fluid density */
++      }
++      else {
++        active_delta_udm = ppw->udm_avg_delta_rho/rho_udm;
++        if (fabs(theta_denominator) < 1.e-60) {
++          ppw->udm_avg_active_fallback_reason = 5.; /* rho+p floor */
++        }
++        else {
++          active_theta_udm = ppw->udm_avg_momentum/theta_denominator;
++        }
++        if (ppw->udm_avg_active_fallback_reason == 0.) {
++          if ((!isfinite(active_delta_udm)) || (!isfinite(active_theta_udm)) ||
++              (fabs(active_delta_udm) > 1.e8) || (fabs(active_theta_udm) > 1.e8)) {
++            ppw->udm_avg_active_fallback_reason = 6.; /* active delta/theta guard */
++          }
++          else {
++            delta_udm = active_delta_udm;
++            theta_udm = active_theta_udm;
++            theta_reinit_used = theta_udm;
++          }
++        }
++      }
++    }
++
++    ppw->udm_theta_match = theta_udm;
++    ppw->udm_delta_post_initial = delta_udm;
++    ppw->udm_theta_post_initial = theta_udm;
++  }
++
++  ppw->udm_matching_done = _TRUE_;
++  ppw->udm_strict_reinit_done = _TRUE_; /* route UDM strict path separately from smooth fallback. */
++  ppw->pv->y[ppw->pv->index_pt_delta_udm] = delta_udm;
++  ppw->pv->y[ppw->pv->index_pt_theta_udm] = theta_udm;
++  /* keep accepted KG variables finite through UDM. They have
++     zero RHS in the post-oscillation branch, and resetting them sharply at
++     tau_osc can introduce a numerical boundary jump before UDM
++     removes the legacy smooth path cleanly. */
++
++  return _SUCCESS_;
++}
++
+ 
+ /**
+  * Source function \f$ S^{X} (k, \tau) \f$ at a given conformal time tau.
+@@ -480,6 +1142,7 @@ int perturbations_output_data(
+           class_store_double(dataptr,tk[ppt->index_tp_delta_dcdm],ppt->has_source_delta_dcdm,storeidx);
+           class_store_double(dataptr,tk[ppt->index_tp_delta_dr],ppt->has_source_delta_dr,storeidx);
+           class_store_double(dataptr,tk[ppt->index_tp_delta_scf],ppt->has_source_delta_scf,storeidx);
++          class_store_double(dataptr,tk[ppt->index_tp_delta_udm],ppt->has_source_delta_udm,storeidx);
+           class_store_double(dataptr,tk[ppt->index_tp_delta_m],ppt->has_source_delta_m,storeidx);
+           class_store_double(dataptr,tk[ppt->index_tp_delta_tot],ppt->has_source_delta_tot,storeidx);
+           class_store_double(dataptr,tk[ppt->index_tp_phi],ppt->has_source_phi,storeidx);
+@@ -509,6 +1172,7 @@ int perturbations_output_data(
+           class_store_double(dataptr,tk[ppt->index_tp_theta_dcdm],ppt->has_source_theta_dcdm,storeidx);
+           class_store_double(dataptr,tk[ppt->index_tp_theta_dr],ppt->has_source_theta_dr,storeidx);
+           class_store_double(dataptr,tk[ppt->index_tp_theta_scf],ppt->has_source_theta_scf,storeidx);
++          class_store_double(dataptr,tk[ppt->index_tp_theta_udm],ppt->has_source_theta_udm,storeidx);
+           class_store_double(dataptr,tk[ppt->index_tp_theta_tot],ppt->has_source_theta_tot,storeidx);
+ 
+         }
+@@ -569,6 +1233,7 @@ int perturbations_output_titles(
+       class_store_columntitle(titles,"d_dcdm",pba->has_dcdm);
+       class_store_columntitle(titles,"d_dr",pba->has_dr);
+       class_store_columntitle(titles,"d_scf",pba->has_scf);
++      class_store_columntitle(titles,"d_udm",ppt->has_source_delta_udm);
+       class_store_columntitle(titles,"d_m",ppt->has_source_delta_m);
+       class_store_columntitle(titles,"d_tot",ppt->has_source_delta_tot);
+       class_store_columntitle(titles,"phi",ppt->has_source_phi);
+@@ -598,6 +1263,7 @@ int perturbations_output_titles(
+       class_store_columntitle(titles,"t_dcdm",pba->has_dcdm);
+       class_store_columntitle(titles,"t_dr",pba->has_dr);
+       class_store_columntitle(titles,"t_scf",pba->has_scf);
++      class_store_columntitle(titles,"t_udm",ppt->has_source_theta_udm);
+       class_store_columntitle(titles,"t_tot",_TRUE_);
+     }
+   }
+@@ -1093,6 +1759,7 @@ int perturbations_free(
+         free(ppt->tensor_perturbations_data[filenum]);
+     }
+ 
++
+   }
+ 
+   ppt->is_allocated = _FALSE_;
+@@ -1186,6 +1853,7 @@ int perturbations_indices(
+   ppt->has_source_delta_dcdm = _FALSE_;
+   ppt->has_source_delta_fld = _FALSE_;
+   ppt->has_source_delta_scf = _FALSE_;
++  ppt->has_source_delta_udm = _FALSE_;
+   ppt->has_source_delta_dr = _FALSE_;
+   ppt->has_source_delta_ur = _FALSE_;
+   ppt->has_source_delta_idr = _FALSE_;
+@@ -1201,6 +1869,7 @@ int perturbations_indices(
+   ppt->has_source_theta_dcdm = _FALSE_;
+   ppt->has_source_theta_fld = _FALSE_;
+   ppt->has_source_theta_scf = _FALSE_;
++  ppt->has_source_theta_udm = _FALSE_;
+   ppt->has_source_theta_dr = _FALSE_;
+   ppt->has_source_theta_ur = _FALSE_;
+   ppt->has_source_theta_idr = _FALSE_;
+@@ -1295,6 +1964,8 @@ int perturbations_indices(
+           ppt->has_source_delta_fld = _TRUE_;
+         if (pba->has_scf == _TRUE_)
+           ppt->has_source_delta_scf = _TRUE_;
++        if (pba->has_udm == _TRUE_)
++          ppt->has_source_delta_udm = _TRUE_;
+         if (pba->has_ur == _TRUE_)
+           ppt->has_source_delta_ur = _TRUE_;
+         if (pba->has_idr == _TRUE_)
+@@ -1326,6 +1997,8 @@ int perturbations_indices(
+           ppt->has_source_theta_fld = _TRUE_;
+         if (pba->has_scf == _TRUE_)
+           ppt->has_source_theta_scf = _TRUE_;
++        if (pba->has_udm == _TRUE_)
++          ppt->has_source_theta_udm = _TRUE_;
+         if (pba->has_ur == _TRUE_)
+           ppt->has_source_theta_ur = _TRUE_;
+         if (pba->has_idr == _TRUE_)
+@@ -1400,6 +2073,7 @@ int perturbations_indices(
+       class_define_index(ppt->index_tp_delta_dcdm, ppt->has_source_delta_dcdm,index_type,1);
+       class_define_index(ppt->index_tp_delta_fld,  ppt->has_source_delta_fld, index_type,1);
+       class_define_index(ppt->index_tp_delta_scf,  ppt->has_source_delta_scf, index_type,1);
++      class_define_index(ppt->index_tp_delta_udm,  ppt->has_source_delta_udm, index_type,1);
+       class_define_index(ppt->index_tp_delta_dr,   ppt->has_source_delta_dr,  index_type,1);
+       class_define_index(ppt->index_tp_delta_ur,   ppt->has_source_delta_ur,  index_type,1);
+       class_define_index(ppt->index_tp_delta_idr,  ppt->has_source_delta_idr, index_type,1);
+@@ -1414,6 +2088,7 @@ int perturbations_indices(
+       class_define_index(ppt->index_tp_theta_dcdm, ppt->has_source_theta_dcdm,index_type,1);
+       class_define_index(ppt->index_tp_theta_fld,  ppt->has_source_theta_fld, index_type,1);
+       class_define_index(ppt->index_tp_theta_scf,  ppt->has_source_theta_scf, index_type,1);
++      class_define_index(ppt->index_tp_theta_udm,  ppt->has_source_theta_udm, index_type,1);
+       class_define_index(ppt->index_tp_theta_dr,   ppt->has_source_theta_dr,  index_type,1);
+       class_define_index(ppt->index_tp_theta_ur,   ppt->has_source_theta_ur,  index_type,1);
+       class_define_index(ppt->index_tp_theta_idr,  ppt->has_source_theta_idr, index_type,1);
+@@ -2815,6 +3490,30 @@ int perturbations_workspace_init(
+     ppw->approx[ppw->index_ap_rsa]=(int)rsa_off;
+   }
+ 
++  /* initialize UDM mode-local KG-to-fluid matching state. */
++  ppw->udm_matching_done = _FALSE_;
++  ppw->udm_matching_candidate = _FALSE_;
++  ppw->udm_strict_reinit_done = _FALSE_;
++  ppw->udm_delta_match = 0.;
++  ppw->udm_theta_match = 0.;
++  ppw->udm_delta_post_initial = 0.;
++  ppw->udm_theta_post_initial = 0.;
++  ppw->udm_theta_kg_finite = 0.;
++  ppw->udm_avg_sample_count_used = 0.;
++  ppw->udm_avg_delta_rho = 0.;
++  ppw->udm_avg_momentum = 0.;
++  ppw->udm_avg_delta_p = 0.;
++  ppw->udm_avg_fluid_delta_p = 0.;
++  ppw->udm_avg_pressure_jump = 0.;
++  ppw->udm_avg_density_mismatch = 0.;
++  ppw->udm_avg_momentum_jump = 0.;
++  ppw->udm_avg_delta_p_sq_avg = 0.;
++  ppw->udm_avg_delta_p_rms = 0.;
++  ppw->udm_avg_delta_p_min = 0.;
++  ppw->udm_avg_delta_p_max = 0.;
++  ppw->udm_avg_finite_flag = 0.;
++  ppw->udm_avg_active_fallback_reason = 0.;
++
+   /** - allocate fields where some of the perturbations are stored */
+ 
+   if (_scalars_) {
+@@ -2950,6 +3649,8 @@ int perturbations_solve(
+   int * previous_approx;
+ 
+   int n_ncdm,is_early_enough;
++  int udm_tau_osc_inserted=_FALSE_,udm_tau_osc_insert_index=-1;
++  double udm_tau_osc=0.;
+ 
+   /* function pointer to ODE evolver and names of possible evolvers */
+ 
+@@ -3146,6 +3847,23 @@ int perturbations_solve(
+ 
+   free(interval_number_of);
+ 
++  /* UDM. Insert the delayed KG-to-fluid perturbation transition
++     as an accepted integration interval boundary for scalar UDM modes.
++     For delay_factor=1 this is the historical tau_osc boundary. */
++  class_call(perturbations_udm_insert_tau_osc_interval(ppr,
++                                                       pba,
++                                                       ppt,
++                                                       index_md,
++                                                       ppw->ap_size,
++                                                       &interval_number,
++                                                       &interval_limit,
++                                                       &interval_approx,
++                                                       &udm_tau_osc_inserted,
++                                                       &udm_tau_osc_insert_index,
++                                                       &udm_tau_osc),
++             ppt->error_message,
++             ppt->error_message);
++
+   /** - fill the structure containing all fixed parameters, indices
+       and workspaces needed by perturbations_derivs */
+ 
+@@ -3215,6 +3933,25 @@ int perturbations_solve(
+                ppt->error_message,
+                ppt->error_message);
+ 
++    /* UDM accepted-state KG-to-fluid reinitialization. The
++       delayed transition insertion makes this interval start exactly at the
++       accepted perturbation transition boundary. Apply this only once per
++       k-mode and only after perturbations_vector_init() has copied the
++       previous interval's accepted final KG state. */
++    if ((udm_tau_osc_inserted == _TRUE_) &&
++        (index_interval == udm_tau_osc_insert_index)) {
++      class_call(perturbations_udm_apply_tau_osc_reinit(pba,
++                                                        ppt,
++                                                        index_md,
++                                                        index_ic,
++                                                        index_k,
++                                                        k,
++                                                        udm_tau_osc,
++                                                        ppw),
++                 ppt->error_message,
++                 ppt->error_message);
++    }
++
+     /** - --> (d) integrate the perturbations over the current interval. */
+ 
+     if (ppr->evolver == rk){
+@@ -3356,6 +4093,13 @@ int perturbations_prepare_k_output(struct background * pba,
+       /* Scalar field scf */
+       class_store_columntitle(ppt->scalar_titles, "delta_scf", pba->has_scf);
+       class_store_columntitle(ppt->scalar_titles, "theta_scf", pba->has_scf);
++      /* UDM perturbations */
++      class_store_columntitle(ppt->scalar_titles, "delta_udm", pba->has_udm);
++      class_store_columntitle(ppt->scalar_titles, "theta_udm", pba->has_udm);
++      class_store_columntitle(ppt->scalar_titles, "delta_phi_udm", pba->has_udm);
++      class_store_columntitle(ppt->scalar_titles, "delta_phi_prime_udm", pba->has_udm);
++      class_store_columntitle(ppt->scalar_titles, "cs2_udm", pba->has_udm);
++      class_store_columntitle(ppt->scalar_titles, "w_udm", pba->has_udm);
+       /** Fluid */
+       class_store_columntitle(ppt->scalar_titles, "delta_rho_fld", pba->has_fld);
+       class_store_columntitle(ppt->scalar_titles, "rho_plus_p_theta_fld", pba->has_fld);
+@@ -3834,6 +4578,8 @@ int perturbations_vector_init(
+   struct perturbations_vector * ppv;
+ 
+   int index_pt;
++  int index_ap;
++  int approximations_identical;
+   int l;
+   int n_ncdm,index_q,ncdm_l_size;
+   double rho_plus_p_ncdm,q,q2,epsilon,a,factor;
+@@ -3950,6 +4696,12 @@ int perturbations_vector_init(
+     class_define_index(ppv->index_pt_phi_scf,pba->has_scf,index_pt,1); /* scalar field density */
+     class_define_index(ppv->index_pt_phi_prime_scf,pba->has_scf,index_pt,1); /* scalar field velocity */
+ 
++    /* UDM perturbation infrastructure, dummy dynamics only */
++    class_define_index(ppv->index_pt_delta_udm,pba->has_udm,index_pt,1);
++    class_define_index(ppv->index_pt_theta_udm,pba->has_udm,index_pt,1);
++    class_define_index(ppv->index_pt_delta_phi_udm,pba->has_udm,index_pt,1);
++    class_define_index(ppv->index_pt_delta_phi_prime_udm,pba->has_udm,index_pt,1);
++
+     /* perturbed recombination: the indices are defined once tca is off. */
+     if ( (ppt->has_perturbed_recombination == _TRUE_) && (ppw->approx[ppw->index_ap_tca] == (int)tca_off) ){
+       class_define_index(ppv->index_pt_perturbed_recombination_delta_temp,_TRUE_,index_pt,1);
+@@ -4338,6 +5090,30 @@ int perturbations_vector_init(
+ 
+     if (_scalars_) {
+ 
++      /* The inserted UDM KG-to-EFA boundary is not an
++         approximation transition.  In that one case the old and new state
++         vectors have identical layouts, so preserve the complete accepted
++         state before the UDM-specific reinitializer replaces only delta_udm
++         and theta_udm.  Ordinary TCA/UFA/RSA transitions remain handled by
++         their existing variable-specific branches below. */
++      approximations_identical = _TRUE_;
++      for (index_ap=0; index_ap<ppw->ap_size; index_ap++) {
++        if (pa_old[index_ap] != ppw->approx[index_ap]) {
++          approximations_identical = _FALSE_;
++          break;
++        }
++      }
++      if (approximations_identical == _TRUE_) {
++        class_test(ppv->pt_size != ppw->pv->pt_size,
++                   ppt->error_message,
++                   "at tau=%g: identical approximation flags produced incompatible perturbation-vector sizes (%d != %d)",
++                   tau,
++                   ppv->pt_size,
++                   ppw->pv->pt_size);
++        for (index_pt=0; index_pt<ppv->pt_size; index_pt++)
++          ppv->y[index_pt] = ppw->pv->y[index_pt];
++      }
++
+       /** - ---> (a.1.) check that the change of approximation scheme makes
+           sense (note: before calling this routine there is already a
+           check that we wish to change only one approximation flag at
+@@ -4423,6 +5199,21 @@ int perturbations_vector_init(
+           ppw->pv->y[ppw->pv->index_pt_phi_prime_scf];
+       }
+ 
++      if (pba->has_udm == _TRUE_) { /* UDM dummy UDM perturbations */
++
++        ppv->y[ppv->index_pt_delta_udm] =
++          ppw->pv->y[ppw->pv->index_pt_delta_udm];
++
++        ppv->y[ppv->index_pt_theta_udm] =
++          ppw->pv->y[ppw->pv->index_pt_theta_udm];
++
++        ppv->y[ppv->index_pt_delta_phi_udm] =
++          ppw->pv->y[ppw->pv->index_pt_delta_phi_udm];
++
++        ppv->y[ppv->index_pt_delta_phi_prime_udm] =
++          ppw->pv->y[ppw->pv->index_pt_delta_phi_prime_udm];
++      }
++
+       if (ppt->gauge == synchronous)
+         ppv->y[ppv->index_pt_eta] =
+           ppw->pv->y[ppw->pv->index_pt_eta];
+@@ -5489,6 +6280,13 @@ int perturbations_initial_conditions(struct precision * ppr,
+            a*a/ppw->pvecback[pba->index_bg_phi_prime_scf]*( - ktau_two/4.*(1.+1./3.)*(4.-3.*1.)/(4.-6.*(1/3.)+3.*1.)*ppw->pvecback[pba->index_bg_rho_scf] - ppw->pvecback[pba->index_bg_dV_scf]*ppw->pv->y[ppw->pv->index_pt_phi_scf])* ppr->curvature_ini * s2_squared; */
+       }
+ 
++      if (pba->has_udm == _TRUE_) {
++        ppw->pv->y[ppw->pv->index_pt_delta_udm] = 0.;
++        ppw->pv->y[ppw->pv->index_pt_theta_udm] = 0.;
++        ppw->pv->y[ppw->pv->index_pt_delta_phi_udm] = 0.;
++        ppw->pv->y[ppw->pv->index_pt_delta_phi_prime_udm] = 0.;
++      }
++
+       /* all relativistic relics: ur, early ncdm, dr */
+ 
+       if ((pba->has_ur == _TRUE_) || (pba->has_ncdm == _TRUE_) || (pba->has_dr == _TRUE_) || (pba->has_idr == _TRUE_)) {
+@@ -6781,6 +7579,12 @@ int perturbations_total_stress_energy(
+   double rho_plus_p_theta_ncdm=0.;
+   double rho_plus_p_shear_ncdm=0.;
+   double delta_p_ncdm=0.;
++  double a_osc_udm_metric=0., w_udm_metric=0., dw_over_da_udm_metric=0., w_prime_udm_metric=0.;
++  double cs2_udm_metric=0., ca2_udm_metric=0., one_plus_w_udm_metric=0., udm_match_gate_metric=0.;
++  double delta_udm_metric=0., theta_udm_metric=0., psi_udm_metric=0.;
++  double delta_rho_udm_metric=0., delta_p_udm_metric=0.;
++  double rho_plus_p_udm_metric=0., rho_plus_p_theta_udm_metric=0.;
++  double matter_weight_udm=0., rho_udm_matter_eff=0.;
+   double factor;
+   double rho_plus_p_ncdm;
+   int index_q,n_ncdm,idx;
+@@ -7174,6 +7978,120 @@ int perturbations_total_stress_energy(
+ 
+     /* add your extra species here */
+ 
++    /* UDM optional UDM metric-source contribution.
++       This flag adds UDM stress-energy only to the Einstein source totals.
++       It deliberately does not modify delta_m, theta_m, lensing, or likelihood
++       bookkeeping; those remain reserved for later UDM stages. */
++    if ((pba->has_udm == _TRUE_) && (pba->udm_include_in_metric == _TRUE_)) {
++
++      a_osc_udm_metric = perturbations_udm_a_fluid_transition(pba); /* UDM delayed perturbation fluid boundary */
++      delta_udm_metric = 0.;
++      theta_udm_metric = 0.;
++      delta_rho_udm_metric = 0.;
++      delta_p_udm_metric = 0.;
++      rho_plus_p_udm_metric = ppw->pvecback[pba->index_bg_rho_udm]+ppw->pvecback[pba->index_bg_p_udm];
++      rho_plus_p_theta_udm_metric = 0.;
++
++      if (a < a_osc_udm_metric) {
++        if (ppt->gauge == newtonian)
++          psi_udm_metric = y[ppw->pv->index_pt_phi] - 4.5*(a2/k2)*ppw->rho_plus_p_shear;
++        else
++          psi_udm_metric = 0.;
++
++        class_call(perturbations_udm_kg_stress_energy(pba,
++                                                    ppt->gauge,
++                                                    k,
++                                                    a,
++                                                    psi_udm_metric,
++                                                    ppw->pvecback[pba->index_bg_phi_udm],
++                                                    ppw->pvecback[pba->index_bg_phi_prime_udm],
++                                                    y[ppw->pv->index_pt_delta_phi_udm],
++                                                    y[ppw->pv->index_pt_delta_phi_prime_udm],
++                                                    ppw->pvecback[pba->index_bg_rho_udm],
++                                                    ppw->pvecback[pba->index_bg_p_udm],
++                                                    &delta_udm_metric,
++                                                    &theta_udm_metric,
++                                                    &delta_p_udm_metric),
++                   ppt->error_message,
++                   ppt->error_message);
++
++        delta_rho_udm_metric = ppw->pvecback[pba->index_bg_rho_udm]*delta_udm_metric;
++        if (fabs(rho_plus_p_udm_metric) > 1.e-60)
++          rho_plus_p_theta_udm_metric = rho_plus_p_udm_metric*theta_udm_metric;
++      }
++      else {
++        if (ppw->udm_strict_reinit_done == _TRUE_) {
++          /* UDM strict reinit path. Accepted reinit already
++             wrote the post-transition fluid state into y; metric and total
++             matter bookkeeping must use the same y-only effective values. */
++          delta_udm_metric = y[ppw->pv->index_pt_delta_udm];
++          theta_udm_metric = y[ppw->pv->index_pt_theta_udm];
++        }
++        else {
++          /* legacy smooth fallback for modes without accepted reinit. */
++          udm_match_gate_metric = 0.5*(1.+tanh(log(a/a_osc_udm_metric)/pba->udm_transition_width));
++          delta_udm_metric = y[ppw->pv->index_pt_delta_udm] + udm_match_gate_metric*ppw->udm_delta_post_initial;
++          theta_udm_metric = y[ppw->pv->index_pt_theta_udm] + udm_match_gate_metric*ppw->udm_theta_post_initial;
++        }
++        w_udm_metric = perturbations_udm_w_averaged(pba,a);
++        dw_over_da_udm_metric = perturbations_udm_dw_over_da_averaged(pba,a);
++        w_prime_udm_metric = dw_over_da_udm_metric*a_prime_over_a*a;
++        cs2_udm_metric = perturbations_udm_cs2(pba,k,a,ppw->pvecback[pba->index_bg_rho_udm]);
++        one_plus_w_udm_metric = 1.+w_udm_metric;
++
++        delta_rho_udm_metric = ppw->pvecback[pba->index_bg_rho_udm]*delta_udm_metric;
++        if ((fabs(rho_plus_p_udm_metric) > 1.e-60) && isfinite(theta_udm_metric))
++          rho_plus_p_theta_udm_metric = rho_plus_p_udm_metric*theta_udm_metric;
++
++        if ((one_plus_w_udm_metric > 1.e-12) && (k2 > 0.) && (a_prime_over_a != 0.)) {
++          ca2_udm_metric = w_udm_metric - w_prime_udm_metric/3./one_plus_w_udm_metric/a_prime_over_a;
++          if (!isfinite(ca2_udm_metric))
++            ca2_udm_metric = w_udm_metric;
++          delta_p_udm_metric = cs2_udm_metric*delta_rho_udm_metric
++            + (cs2_udm_metric-ca2_udm_metric)*(3.*a_prime_over_a*rho_plus_p_theta_udm_metric/k2);
++        }
++        else {
++          delta_p_udm_metric = cs2_udm_metric*delta_rho_udm_metric;
++        }
++      }
++
++      if (!isfinite(delta_rho_udm_metric))
++        delta_rho_udm_metric = 0.;
++      if (!isfinite(delta_p_udm_metric))
++        delta_p_udm_metric = 0.;
++      if (!isfinite(rho_plus_p_theta_udm_metric))
++        rho_plus_p_theta_udm_metric = 0.;
++      if (!isfinite(rho_plus_p_udm_metric))
++        rho_plus_p_udm_metric = 0.;
++
++      ppw->delta_rho += delta_rho_udm_metric;
++      ppw->delta_p += delta_p_udm_metric;
++      ppw->rho_plus_p_theta += rho_plus_p_theta_udm_metric;
++      ppw->rho_plus_p_tot += rho_plus_p_udm_metric;
++
++      /* UDM total-matter transfer bookkeeping. This uses the matter convention
++         for delta_m/theta_m:
++         rho_eff*delta and rho_eff*theta. It is intentionally different from
++         the metric-source contribution, which uses (rho+p)*theta. */
++      if (pba->udm_include_in_total_matter == _TRUE_) {
++        matter_weight_udm = perturbations_udm_matter_weight(pba,a,w_udm_metric); /* UDM mode-controlled delta_m/theta_m bookkeeping only */
++
++        rho_udm_matter_eff = matter_weight_udm*ppw->pvecback[pba->index_bg_rho_udm];
++        if (!isfinite(rho_udm_matter_eff))
++          rho_udm_matter_eff = 0.;
++
++        if ((ppt->has_source_delta_m == _TRUE_) && (rho_udm_matter_eff > 0.)) {
++          delta_rho_m += rho_udm_matter_eff*delta_udm_metric;
++          rho_m += rho_udm_matter_eff;
++        }
++        if (((ppt->has_source_delta_m == _TRUE_) || (ppt->has_source_theta_m == _TRUE_)) &&
++            (rho_udm_matter_eff > 0.)) {
++          rho_plus_p_theta_m += rho_udm_matter_eff*theta_udm_metric;
++          rho_plus_p_m += rho_udm_matter_eff;
++        }
++      }
++    }
++
+     /* fluid contribution */
+     if (pba->has_fld == _TRUE_) {
+ 
+@@ -7460,6 +8378,8 @@ int perturbations_sources(
+ 
+   double H_T_Nb_prime=0., rho_tot;
+   double theta_over_k2,theta_shift;
++  double delta_udm_source=0., theta_udm_source=0.;
++  double a_osc_udm_source=0., udm_match_gate_source=0.;
+ 
+   double theta_b, theta_b_prime;
+   double dkappa, ddkappa, exp_m_kappa, g, g_prime;
+@@ -7877,6 +8797,45 @@ int perturbations_sources(
+       _set_source_(ppt->index_tp_delta_scf) = delta_rho_scf/pvecback[pba->index_bg_rho_scf];
+     }
+ 
++    /* UDM density transfer source. */
++    if (ppt->has_source_delta_udm == _TRUE_) {
++      if (pba->has_udm == _TRUE_) {
++        a_osc_udm_source = perturbations_udm_a_fluid_transition(pba); /* UDM delayed perturbation fluid boundary */
++        if (a < a_osc_udm_source) {
++          class_call(perturbations_udm_kg_stress_energy(pba,
++                                                      ppt->gauge,
++                                                      k,
++                                                      a,
++                                                      pvecmetric[ppw->index_mt_psi],
++                                                      pvecback[pba->index_bg_phi_udm],
++                                                      pvecback[pba->index_bg_phi_prime_udm],
++                                                      y[ppw->pv->index_pt_delta_phi_udm],
++                                                      y[ppw->pv->index_pt_delta_phi_prime_udm],
++                                                      pvecback[pba->index_bg_rho_udm],
++                                                      pvecback[pba->index_bg_p_udm],
++                                                      &delta_udm_source,
++                                                      &theta_udm_source,
++                                                      NULL),
++                     ppt->error_message,
++                     error_message);
++        }
++        else {
++          if (ppw->udm_strict_reinit_done == _TRUE_) {
++            /* UDM strict reinit path uses y-only sources. */
++            delta_udm_source = y[ppw->pv->index_pt_delta_udm];
++            theta_udm_source = y[ppw->pv->index_pt_theta_udm];
++          }
++          else {
++            /* legacy smooth fallback for modes without accepted reinit. */
++            udm_match_gate_source = 0.5*(1.+tanh(log(a/a_osc_udm_source)/pba->udm_transition_width));
++            delta_udm_source = y[ppw->pv->index_pt_delta_udm] + udm_match_gate_source*ppw->udm_delta_post_initial;
++            theta_udm_source = y[ppw->pv->index_pt_theta_udm] + udm_match_gate_source*ppw->udm_theta_post_initial;
++          }
++        }
++      }
++      _set_source_(ppt->index_tp_delta_udm) = delta_udm_source;
++    }
++
+     /* delta_dr */
+     if (ppt->has_source_delta_dr == _TRUE_) {
+       f_dr = pow(a2/pba->H0,2)*pvecback[pba->index_bg_rho_dr];
+@@ -7988,6 +8947,43 @@ int perturbations_sources(
+         + theta_shift; // N-body gauge correction
+     }
+ 
++    /* UDM velocity transfer source. */
++    if (ppt->has_source_theta_udm == _TRUE_) {
++      if (pba->has_udm == _TRUE_) {
++        a_osc_udm_source = perturbations_udm_a_fluid_transition(pba); /* UDM delayed perturbation fluid boundary */
++        if (a < a_osc_udm_source) {
++          class_call(perturbations_udm_kg_stress_energy(pba,
++                                                      ppt->gauge,
++                                                      k,
++                                                      a,
++                                                      pvecmetric[ppw->index_mt_psi],
++                                                      pvecback[pba->index_bg_phi_udm],
++                                                      pvecback[pba->index_bg_phi_prime_udm],
++                                                      y[ppw->pv->index_pt_delta_phi_udm],
++                                                      y[ppw->pv->index_pt_delta_phi_prime_udm],
++                                                      pvecback[pba->index_bg_rho_udm],
++                                                      pvecback[pba->index_bg_p_udm],
++                                                      &delta_udm_source,
++                                                      &theta_udm_source,
++                                                      NULL),
++                     ppt->error_message,
++                     error_message);
++        }
++        else {
++          if (ppw->udm_strict_reinit_done == _TRUE_) {
++            /* UDM strict reinit path uses y-only theta source. */
++            theta_udm_source = y[ppw->pv->index_pt_theta_udm];
++          }
++          else {
++            /* legacy smooth fallback for modes without accepted reinit. */
++            udm_match_gate_source = 0.5*(1.+tanh(log(a/a_osc_udm_source)/pba->udm_transition_width));
++            theta_udm_source = y[ppw->pv->index_pt_theta_udm] + udm_match_gate_source*ppw->udm_theta_post_initial;
++          }
++        }
++      }
++      _set_source_(ppt->index_tp_theta_udm) = theta_udm_source;
++    }
++
+     /* theta_dr */
+     if (ppt->has_source_theta_dr == _TRUE_) {
+ 
+@@ -8124,6 +9120,9 @@ int perturbations_print_variables(double tau,
+   double delta_idr=0., theta_idr=0., shear_idr=0.;
+   double delta_rho_scf=0., rho_plus_p_theta_scf=0.;
+   double delta_scf=0., theta_scf=0.;
++  double delta_udm=0., theta_udm=0.;
++  double delta_phi_udm=0., delta_phi_prime_udm=0.;
++  double cs2_udm=0., w_udm=0., udm_match_gate=0.;
+   /** - ncdm sector begins */
+   int n_ncdm;
+   double *delta_ncdm=NULL, *theta_ncdm=NULL, *shear_ncdm=NULL, *delta_p_over_delta_rho_ncdm=NULL;
+@@ -8418,6 +9417,46 @@ int perturbations_print_variables(double tau,
+ 
+     }
+ 
++    if (pba->has_udm == _TRUE_) {
++      delta_phi_udm = y[ppw->pv->index_pt_delta_phi_udm];
++      delta_phi_prime_udm = y[ppw->pv->index_pt_delta_phi_prime_udm];
++      w_udm = pvecback[pba->index_bg_w_udm];
++      if (a < perturbations_udm_a_fluid_transition(pba)) { /* UDM delayed perturbation fluid boundary */
++        class_call(perturbations_udm_kg_stress_energy(pba,
++                                                    ppt->gauge,
++                                                    k,
++                                                    a,
++                                                    pvecmetric[ppw->index_mt_psi],
++                                                    pvecback[pba->index_bg_phi_udm],
++                                                    pvecback[pba->index_bg_phi_prime_udm],
++                                                    delta_phi_udm,
++                                                    delta_phi_prime_udm,
++                                                    pvecback[pba->index_bg_rho_udm],
++                                                    pvecback[pba->index_bg_p_udm],
++                                                    &delta_udm,
++                                                    &theta_udm,
++                                                    NULL),
++                   ppt->error_message,
++                   error_message);
++        cs2_udm = 1.;
++      }
++      else {
++        if (ppw->udm_strict_reinit_done == _TRUE_) {
++          /* The strict reinitialization path uses the effective-fluid
++             variables stored in the state vector. */
++          delta_udm = y[ppw->pv->index_pt_delta_udm];
++          theta_udm = y[ppw->pv->index_pt_theta_udm];
++        }
++        else {
++          /* legacy smooth fallback for modes without accepted reinit. */
++          udm_match_gate = 0.5*(1.+tanh(log(a/perturbations_udm_a_fluid_transition(pba))/pba->udm_transition_width));
++          delta_udm = y[ppw->pv->index_pt_delta_udm] + udm_match_gate*ppw->udm_delta_post_initial;
++          theta_udm = y[ppw->pv->index_pt_theta_udm] + udm_match_gate*ppw->udm_theta_post_initial;
++        }
++        cs2_udm = perturbations_udm_cs2(pba,k,a,pvecback[pba->index_bg_rho_udm]);
++      }
++    }
++
+     /* converting synchronous variables to newtonian ones */
+     if ((ppt->gauge == synchronous) && (ppt->get_perturbations_in_current_gauge == _FALSE_)) {
+ 
+@@ -8557,6 +9596,13 @@ int perturbations_print_variables(double tau,
+     /* Scalar field scf*/
+     class_store_double(dataptr, delta_scf, pba->has_scf, storeidx);
+     class_store_double(dataptr, theta_scf, pba->has_scf, storeidx);
++    /* UDM perturbations */
++    class_store_double(dataptr, delta_udm, pba->has_udm, storeidx);
++    class_store_double(dataptr, theta_udm, pba->has_udm, storeidx);
++    class_store_double(dataptr, delta_phi_udm, pba->has_udm, storeidx);
++    class_store_double(dataptr, delta_phi_prime_udm, pba->has_udm, storeidx);
++    class_store_double(dataptr, cs2_udm, pba->has_udm, storeidx);
++    class_store_double(dataptr, w_udm, pba->has_udm, storeidx);
+     /** Fluid */
+     class_store_double(dataptr, ppw->delta_rho_fld, pba->has_fld, storeidx);
+     class_store_double(dataptr, ppw->rho_plus_p_theta_fld, pba->has_fld, storeidx);
+@@ -8773,6 +9819,13 @@ int perturbations_derivs(double tau,
+   /* for use with fluid (fld): */
+   double w_fld,dw_over_da_fld,w_prime_fld,integral_fld;
+ 
++  /* for use with UDM averaged-fluid perturbations */
++  double a_osc_udm,w_udm,dw_over_da_udm,w_prime_udm,ca2_udm,cs2_udm,one_plus_w_udm;
++  double cs2_rhs_udm, ca2_rhs_udm, cs2_minus_ca2_rhs_udm, cs2_over_1pw_rhs_udm;
++  double delta_udm,theta_udm,udm_activation_x,udm_activation;
++  double V_phiphi_udm,udm_match_gate;
++  double delta_match_udm=0.,theta_match_udm=0.,delta_p_match_udm=0.;
++
+   /*  for use with interacting dark matter  */
+   double c2_idm=0., S_idm_g=0.;
+   double dmu_idm_g = 0., photon_scattering_rate;
+@@ -8821,6 +9874,19 @@ int perturbations_derivs(double tau,
+              pba->error_message,
+              error_message);
+ 
++  /* The exact-KG perturbation RHS uses the
++     same pre-switch-only background limit as the matching state. */
++  if ((pba->has_udm == _TRUE_) &&
++      (pvecback[pba->index_bg_a] < perturbations_udm_a_fluid_transition(pba))) {
++    class_call(background_at_z_udm_kg_left(pba,
++                                           1./pvecback[pba->index_bg_a]-1.,
++                                           normal_info,
++                                           &(ppw->last_index_back),
++                                           pvecback),
++               pba->error_message,
++               error_message);
++  }
++
+   class_call(thermodynamics_at_z(pba,
+                                  pth,
+                                  1./pvecback[pba->index_bg_a]-1.,  /* redshift z=1/a-1 */
+@@ -9406,6 +10472,173 @@ int perturbations_derivs(double tau,
+ 
+     }
+ 
++    /* UDM perturbations.
++       Before the delayed perturbation transition, evolve KG field
++       perturbations with the same source-term sign convention as CLASS scf.
++       After that boundary, use the UDM averaged-fluid delta/theta RHS.
++       The default delay factor keeps the historical z_osc boundary. */
++    if (pba->has_udm == _TRUE_) {
++      a_osc_udm = perturbations_udm_a_fluid_transition(pba); /* UDM delayed perturbation fluid boundary */
++
++      if (a < a_osc_udm) {
++        V_phiphi_udm = perturbations_udm_V_phiphi(pba,pvecback[pba->index_bg_phi_udm]);
++        dy[pv->index_pt_delta_phi_udm] = y[pv->index_pt_delta_phi_prime_udm];
++        dy[pv->index_pt_delta_phi_prime_udm] =
++          -2.*a_prime_over_a*y[pv->index_pt_delta_phi_prime_udm]
++          -metric_continuity*pvecback[pba->index_bg_phi_prime_udm]
++          -(k2+a2*V_phiphi_udm)*y[pv->index_pt_delta_phi_udm];
++
++        if (!isfinite(dy[pv->index_pt_delta_phi_udm]))
++          dy[pv->index_pt_delta_phi_udm] = 0.;
++        if (!isfinite(dy[pv->index_pt_delta_phi_prime_udm]))
++          dy[pv->index_pt_delta_phi_prime_udm] = 0.;
++
++        if (ppw->udm_strict_reinit_done == _FALSE_) {
++          /* Continuously update the mode-local KG-to-fluid matching candidate
++             using the last pre-oscillation KG state without overwriting an
++             accepted strict reinitialization during trial evaluations. */
++          class_call(perturbations_udm_kg_stress_energy(pba,
++                                                      ppt->gauge,
++                                                      k,
++                                                      a,
++                                                      pvecmetric[ppw->index_mt_psi],
++                                                      pvecback[pba->index_bg_phi_udm],
++                                                      pvecback[pba->index_bg_phi_prime_udm],
++                                                      y[pv->index_pt_delta_phi_udm],
++                                                      y[pv->index_pt_delta_phi_prime_udm],
++                                                      pvecback[pba->index_bg_rho_udm],
++                                                      pvecback[pba->index_bg_p_udm],
++                                                      &delta_match_udm,
++                                                      &theta_match_udm,
++                                                      &delta_p_match_udm),
++                     ppt->error_message,
++                     error_message);
++          class_call(perturbations_udm_accumulate_matching_average(pba,
++                                                                           ppt,
++                                                                           ppt->gauge,
++                                                                           k,
++                                                                           a,
++                                                                           a_prime_over_a,
++                                                                           pvecmetric[ppw->index_mt_psi],
++                                                                           pvecback[pba->index_bg_phi_udm],
++                                                                           pvecback[pba->index_bg_phi_prime_udm],
++                                                                           y[pv->index_pt_delta_phi_udm],
++                                                                           y[pv->index_pt_delta_phi_prime_udm],
++                                                                           pvecback[pba->index_bg_rho_udm],
++                                                                           pvecback[pba->index_bg_p_udm],
++                                                                           delta_match_udm,
++                                                                           theta_match_udm,
++                                                                           delta_p_match_udm,
++                                                                           ppw),
++                     ppt->error_message,
++                     error_message);
++          if (isfinite(delta_match_udm) && isfinite(theta_match_udm) &&
++              (fabs(delta_match_udm) < 1.e8) && (fabs(theta_match_udm) < 1.e8)) {
++            ppw->udm_matching_candidate = _TRUE_;
++            ppw->udm_matching_done = _FALSE_;
++            ppw->udm_delta_match = delta_match_udm;
++            ppw->udm_theta_match = theta_match_udm;
++          }
++          else {
++            ppw->udm_matching_candidate = _FALSE_;
++            ppw->udm_matching_done = _FALSE_;
++            ppw->udm_delta_match = 0.;
++            ppw->udm_theta_match = 0.;
++          }
++        }
++
++        dy[pv->index_pt_delta_udm] = 0.;
++        dy[pv->index_pt_theta_udm] = 0.;
++      }
++      else {
++        dy[pv->index_pt_delta_phi_udm] = 0.;
++        dy[pv->index_pt_delta_phi_prime_udm] = 0.;
++
++        /* UDM read the stored KG-derived initial condition as a
++           smooth mode-local offset. Avoid irreversible event mutation here:
++           the stiff integrator can evaluate trial points on both sides of
++           the delayed transition before accepting a step. */
++        if (ppw->udm_strict_reinit_done == _TRUE_) {
++          /* Accepted reinitialization already wrote the KG-derived values
++             into the post-fluid state; do not add the smooth offset again. */
++        }
++        else if ((ppw->udm_matching_candidate == _TRUE_) &&
++            isfinite(ppw->udm_delta_match) &&
++            isfinite(ppw->udm_theta_match) &&
++            (fabs(ppw->udm_delta_match) < 1.e8) &&
++            (fabs(ppw->udm_theta_match) < 1.e8)) {
++          ppw->udm_delta_post_initial = ppw->udm_delta_match;
++          ppw->udm_theta_post_initial = ppw->udm_theta_match;
++          ppw->udm_matching_done = _TRUE_;
++        }
++        else {
++          ppw->udm_delta_match = 0.;
++          ppw->udm_theta_match = 0.;
++          ppw->udm_delta_post_initial = 0.;
++          ppw->udm_theta_post_initial = 0.;
++          ppw->udm_matching_done = _FALSE_;
++        }
++
++        if (ppw->udm_strict_reinit_done == _TRUE_) {
++          /* UDM strict reinit path. Accepted reinit owns the
++             post-transition fluid variables, so the RHS uses y-only
++             effective values and no smooth gate offset. */
++          delta_udm = y[pv->index_pt_delta_udm];
++          theta_udm = y[pv->index_pt_theta_udm];
++        }
++        else {
++          /* legacy smooth fallback for modes without accepted reinit. */
++          udm_match_gate = 0.5*(1.+tanh(log(a/a_osc_udm)/pba->udm_transition_width));
++          delta_udm = y[pv->index_pt_delta_udm] + udm_match_gate*ppw->udm_delta_post_initial;
++          theta_udm = y[pv->index_pt_theta_udm] + udm_match_gate*ppw->udm_theta_post_initial;
++        }
++        if (!isfinite(delta_udm))
++          delta_udm = 0.;
++        if (!isfinite(theta_udm))
++          theta_udm = 0.;
++
++        w_udm = perturbations_udm_w_averaged(pba,a);
++        dw_over_da_udm = perturbations_udm_dw_over_da_averaged(pba,a);
++        w_prime_udm = dw_over_da_udm*a_prime_over_a*a;
++        cs2_udm = perturbations_udm_cs2(pba,k,a,pvecback[pba->index_bg_rho_udm]);
++        one_plus_w_udm = 1.+w_udm;
++        /* Numerical activation of the post-handoff EFA RHS.  This is
++           deliberately independent of the physical UDM transition width. */
++        udm_activation_x = log(a/a_osc_udm)/pba->udm_activation_width;
++        udm_activation = 1.-exp(-udm_activation_x*udm_activation_x);
++
++        if (one_plus_w_udm < 1.e-12) {
++          dy[pv->index_pt_delta_udm] = 0.;
++          dy[pv->index_pt_theta_udm] = 0.;
++        }
++        else {
++          ca2_udm = w_udm - w_prime_udm/3./one_plus_w_udm/a_prime_over_a;
++          if (!isfinite(ca2_udm))
++            ca2_udm = w_udm;
++
++          cs2_rhs_udm = cs2_udm;
++          ca2_rhs_udm = ca2_udm;
++
++          cs2_minus_ca2_rhs_udm = cs2_rhs_udm-ca2_rhs_udm;
++          cs2_over_1pw_rhs_udm = cs2_rhs_udm/one_plus_w_udm;
++          dy[pv->index_pt_delta_udm] = udm_activation*(
++            -one_plus_w_udm*(theta_udm+metric_continuity)
++            -3.*(cs2_rhs_udm-w_udm)*a_prime_over_a*delta_udm
++            -9.*one_plus_w_udm*cs2_minus_ca2_rhs_udm*a_prime_over_a*a_prime_over_a*theta_udm/k2);
++
++          dy[pv->index_pt_theta_udm] = udm_activation*(
++            -(1.-3.*cs2_rhs_udm)*a_prime_over_a*theta_udm
++            +cs2_over_1pw_rhs_udm*k2*delta_udm
++            +metric_euler);
++
++          if (!isfinite(dy[pv->index_pt_delta_udm]))
++            dy[pv->index_pt_delta_udm] = 0.;
++          if (!isfinite(dy[pv->index_pt_theta_udm]))
++            dy[pv->index_pt_theta_udm] = 0.;
++        }
++      }
++    }
++
+     /** - ---> ultra-relativistic neutrino/relics (ur) */
+ 
+     if (pba->has_ur == _TRUE_) {

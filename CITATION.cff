@@ -1,0 +1,41 @@
+cff-version: 1.2.0
+message: >-
+  If you use this reproducibility package, cite the accompanying UDM paper and
+  the upstream CLASS references.
+title: "UDMCLASS patch and reproducibility package"
+type: software
+version: "1.0.0"
+date-released: 2026-08-31
+authors:
+  - family-names: Lee
+    given-names: Seokcheon
+  - family-names: Lee
+    given-names: Jae-Weon
+preferred-citation:
+  type: article
+  title: >-
+    Cosmology of self-interacting ultralight dark matter: simultaneous shifts
+    in the Hubble constant and structure growth
+  authors:
+    - family-names: Lee
+      given-names: Seokcheon
+    - family-names: Lee
+      given-names: Jae-Weon
+references:
+  - type: article
+    title: >-
+      The Cosmic Linear Anisotropy Solving System (CLASS). Part II:
+      Approximation schemes
+    authors:
+      - family-names: Blas
+        given-names: Diego
+      - family-names: Lesgourgues
+        given-names: Julien
+      - family-names: Tram
+        given-names: Thomas
+    journal: "Journal of Cosmology and Astroparticle Physics"
+    year: 2011
+    volume: "2011"
+    issue: "07"
+    start: "034"
+    doi: "10.1088/1475-7516/2011/07/034"
